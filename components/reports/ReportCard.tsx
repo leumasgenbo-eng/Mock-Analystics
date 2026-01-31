@@ -87,11 +87,22 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
            className="bg-white w-[210mm] h-[297mm] shadow-2xl flex flex-col p-10 box-border font-sans overflow-hidden border border-gray-100 flex-shrink-0"
            style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}
          >
-            {/* COMPACT ASSESSMENT STRIPE */}
+            {/* HARDCODED INSTITUTIONAL PARTICULARS SHARD */}
             <div className="shrink-0 mb-4">
-               <div className="bg-slate-950 text-white py-6 rounded-[2rem] text-center relative overflow-hidden shadow-lg border-2 border-white mb-4">
-                  <h2 className="text-2xl font-black uppercase tracking-[0.15em] relative z-10">{settings.examTitle}</h2>
-                  <p className="text-[8px] font-black text-blue-400 tracking-[0.5em] uppercase mt-1 relative z-10">PUPIL ATTAINMENT SHARD</p>
+               <div className="bg-slate-950 text-white py-4 px-6 rounded-[2.5rem] text-center relative overflow-hidden shadow-lg border-2 border-white mb-4">
+                  <div className="relative z-10 space-y-0.5">
+                     <p className="text-[7px] font-black text-blue-400 tracking-[0.4em] uppercase opacity-70">INSTITUTIONAL NODE: SMA-2025-3932</p>
+                     <p className="text-[10px] font-black text-blue-300">S</p>
+                     <p className="text-3xl font-black tracking-tighter leading-none uppercase">SAM</p>
+                     <p className="text-[7px] font-bold text-gray-400 tracking-[0.5em] uppercase">EXCELLENCE IN KNOWLEDGE AND CHARACTER</p>
+                     <p className="text-[10px] font-black text-blue-300">ADA</p>
+                     <h2 className="text-xl font-black uppercase tracking-[0.1em] text-white border-y border-white/10 py-1.5 my-1.5">OFFICIAL MOCK ASSESSMENT SERIES</h2>
+                     <div className="flex justify-center flex-wrap gap-x-6 gap-y-1 text-[7px] font-black uppercase tracking-[0.1em] opacity-60">
+                        <div className="flex gap-1"><span>TEL:</span><span>0243504091</span></div>
+                        <div className="flex gap-1"><span>EMAIL:</span><span>leumasgenbo2009@gmail.com</span></div>
+                        <div className="flex gap-1"><span>WEB:</span><span>www.unitedbaylor.edu</span></div>
+                     </div>
+                  </div>
                   <div className="absolute inset-0 bg-gradient-to-br from-blue-900/40 to-transparent"></div>
                </div>
                
@@ -101,7 +112,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
                     { l: 'Term', v: settings.termInfo },
                     { l: 'Cycle', v: settings.academicYear },
                     { l: 'Director', v: settings.headTeacherName },
-                    { l: 'Hub ID', v: settings.schoolNumber }
+                    { l: 'Hub ID', v: "SMA-2025-3932" }
                   ].map((item, i) => (
                     <div key={i} className="flex flex-col items-center bg-gray-50 py-1.5 rounded-xl border border-gray-100"><span className="text-[6px] text-blue-500 mb-0.5">{item.l}</span><span className="text-blue-950 truncate w-full text-center px-1">{item.v}</span></div>
                   ))}
