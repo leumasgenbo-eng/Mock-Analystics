@@ -11,6 +11,7 @@ import SeriesHistoryPortal from './SeriesHistoryPortal';
 import MockResourcesPortal from './MockResourcesPortal';
 import FacilitatorDesk from './FacilitatorDesk';
 import LikelyQuestionDesk from './LikelyQuestionDesk';
+import SubjectQuestionsBank from './SubjectQuestionsBank';
 import EnrolmentForwardingPortal from './EnrolmentForwardingPortal';
 import LocalSyncPortal from './LocalSyncPortal';
 import RewardPortal from './RewardPortal';
@@ -97,6 +98,7 @@ const ManagementDesk: React.FC<ManagementDeskProps> = ({
           )}
           {activeTab === 'facilitatorDesk' && <FacilitatorDesk students={students} setStudents={setStudents} settings={settings} onSettingChange={onSettingChange} onSave={onSave} />}
           {activeTab === 'likelyQuestions' && <LikelyQuestionDesk activeFacilitator={activeFacilitator} />}
+          {activeTab === 'questionsBank' && <SubjectQuestionsBank activeFacilitator={activeFacilitator} subjects={subjects} />}
           {activeTab === 'enrolmentForward' && (
             <EnrolmentForwardingPortal 
               settings={settings} 

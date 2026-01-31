@@ -1,7 +1,6 @@
-
 import React from 'react';
 
-export type ManagementTabType = 'scoreEntry' | 'school' | 'credentials' | 'enrolmentForward' | 'pupils' | 'facilitators' | 'grading' | 'history' | 'resources' | 'facilitatorDesk' | 'localSync' | 'rewards' | 'likelyQuestions' | 'cleanup';
+export type ManagementTabType = 'scoreEntry' | 'school' | 'credentials' | 'enrolmentForward' | 'pupils' | 'facilitators' | 'grading' | 'history' | 'resources' | 'facilitatorDesk' | 'localSync' | 'rewards' | 'likelyQuestions' | 'questionsBank' | 'cleanup';
 
 interface ManagementTabsProps {
   activeTab: ManagementTabType;
@@ -14,7 +13,8 @@ const ManagementTabs: React.FC<ManagementTabsProps> = ({ activeTab, setActiveTab
   const tabs = [
     { id: 'scoreEntry', label: 'Score Entry' },
     { id: 'facilitatorDesk', label: 'Attendance & Conduct' },
-    { id: 'likelyQuestions', label: 'Likely Questions' },
+    { id: 'questionsBank', label: 'Questions Bank' },
+    { id: 'likelyQuestions', label: 'Submit Likely Qs' },
     { id: 'enrolmentForward', label: isFacilitator ? 'Payroll Status' : 'Enrolment Forwarding' },
     { id: 'cleanup', label: isFacilitator ? 'Subject Purge' : 'Data Forge' },
     { id: 'localSync', label: 'Local Sync Hub', adminOnly: true },
