@@ -93,7 +93,6 @@ const App: React.FC = () => {
           if (row.id === `${hubId}_facilitators`) cloudFacilitators = row.payload;
         });
 
-        // Set state synchronously from cloud data
         setSettings(cloudSettings);
         setStudents(cloudStudents);
         setFacilitators(cloudFacilitators);
@@ -107,23 +106,21 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const initializeSystem = async () => {
-      // 1. Fetch Network Registry
+      // 1. Fetch Network Registry Shards
       const { data: regData } = await supabase.from('uba_persistence').select('payload').like('id', 'registry_%');
       if (regData) setGlobalRegistry(regData.flatMap(r => r.payload || []));
 
       // 2. Resolve Active Identity Handshake
-      if (currentHubId) {
-        const storedUser = localStorage.getItem('uba_user_context');
-        if (storedUser) {
-          const user = JSON.parse(storedUser);
-          setLoggedInUser(user);
-          
-          // Force download from cloud as default
+      const storedUser = localStorage.getItem('uba_user_context');
+      if (storedUser) {
+        const user = JSON.parse(storedUser);
+        setLoggedInUser(user);
+        
+        if (user.role === 'super_admin') {
+          setIsSuperAdmin(true);
+        } else if (currentHubId) {
           const cloudData = await syncCloudShards(currentHubId);
-          
-          if (user.role === 'school_admin' && user.email === 'leumasgenbo4@gmail.com') {
-            setIsSuperAdmin(true);
-          } else if (user.role === 'facilitator') {
+          if (user.role === 'facilitator') {
             setActiveFacilitator({ name: user.name, subject: user.subject || "GENERAL" });
           } else if (user.role === 'pupil' && cloudData) {
             const s = calculateClassStatistics(cloudData.students, cloudData.settings);
@@ -171,8 +168,8 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-6">
       <div className="w-16 h-16 border-8 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
       <div className="text-center space-y-1">
-        <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em]">Downloading Cloud Shards</p>
-        <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Handshaking with UNITED BAYLOR ACADEMY Registry...</p>
+        <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em]">Handshaking Global Registry</p>
+        <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">United Baylor Academy Hub v4.6 Active</p>
       </div>
     </div>
   );
@@ -182,12 +179,12 @@ const App: React.FC = () => {
       {isRegistering ? (
         <SchoolRegistrationPortal settings={settings} onBulkUpdate={(u)=>setSettings(p=>({...p,...u}))} onSave={handleSaveAll} onComplete={(hubId)=>{ localStorage.setItem('uba_active_hub_id', hubId); localStorage.setItem('uba_active_role', 'school_admin'); setCurrentHubId(hubId); setActiveRole('school_admin'); }} onResetStudents={()=>setStudents([])} onSwitchToLogin={()=>setIsRegistering(false)} />
       ) : (
-        <LoginPortal onLoginSuccess={async (hubId, user)=>{ localStorage.setItem('uba_active_hub_id', hubId); localStorage.setItem('uba_active_role', user.role); localStorage.setItem('uba_user_context', JSON.stringify(user)); setCurrentHubId(hubId); setActiveRole(user.role); setLoggedInUser(user); await syncCloudShards(hubId); }} onSuperAdminLogin={()=>setIsSuperAdmin(true)} onSwitchToRegister={()=>setIsRegistering(true)} />
+        <LoginPortal onLoginSuccess={async (hubId, user)=>{ localStorage.setItem('uba_active_hub_id', hubId); localStorage.setItem('uba_active_role', user.role); localStorage.setItem('uba_user_context', JSON.stringify(user)); setCurrentHubId(hubId); setActiveRole(user.role); setLoggedInUser(user); await syncCloudShards(hubId); }} onSuperAdminLogin={()=>{ localStorage.setItem('uba_active_role', 'super_admin'); localStorage.setItem('uba_user_context', JSON.stringify({name:'HQ CONTROLLER', role:'super_admin', nodeId:'MASTER-01'})); setIsSuperAdmin(true); setActiveRole('super_admin'); }} onSwitchToRegister={()=>setIsRegistering(true)} />
       )}
     </div>
   );
 
-  if (isSuperAdmin) return <SuperAdminPortal onExit={handleLogout} onRemoteView={async (id)=>{ await syncCloudShards(id); setCurrentHubId(id); setIsSuperAdmin(false); }} />;
+  if (isSuperAdmin) return <SuperAdminPortal onExit={handleLogout} onRemoteView={async (id)=>{ await syncCloudShards(id); setCurrentHubId(id); setIsSuperAdmin(false); setActiveRole('school_admin'); }} />;
 
   if (activeRole === 'pupil' && activePupil) {
     return (

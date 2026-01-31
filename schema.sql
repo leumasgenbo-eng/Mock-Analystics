@@ -1,77 +1,54 @@
 
 -- ==========================================================
--- 1. CORE TABLE STRUCTURE (ANONYMOUS ACCESS MODE)
+-- IDENTITY HUB: Official Institutional Recall Shards
 -- ==========================================================
-
--- Identity Registry: Maps names/roles to hubs (Publicly readable)
 CREATE TABLE IF NOT EXISTS public.uba_identities (
     email TEXT PRIMARY KEY,
     full_name TEXT NOT NULL,
-    node_id TEXT NOT NULL,
-    hub_id TEXT NOT NULL,
-    role TEXT NOT NULL,
+    node_id TEXT NOT NULL,         -- Index #, Staff ID, or MASTER-NODE-01
+    hub_id TEXT NOT NULL,          -- School ID or HQ-HUB
+    role TEXT NOT NULL,            -- super_admin, school_admin, facilitator, pupil
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Persistence Hub: JSON Shards (Open Access via Hub ID)
+-- SEED: MASTER SUPER ADMIN IDENTITY
+-- Use these credentials to log in as the network controller
+INSERT INTO public.uba_identities (email, full_name, node_id, hub_id, role)
+VALUES ('hq@uba.edu', 'HQ CONTROLLER', 'MASTER-NODE-01', 'HQ-HUB', 'super_admin')
+ON CONFLICT (email) DO NOTHING;
+
+-- ==========================================================
+-- PERSISTENCE HUB: JSON Shards for all Academy Data
+-- ==========================================================
 CREATE TABLE IF NOT EXISTS public.uba_persistence (
-    id TEXT PRIMARY KEY,                 -- e.g., 'SMA-2025-001_settings'
-    hub_id TEXT NOT NULL,
-    payload JSONB NOT NULL,
+    id TEXT PRIMARY KEY,                 -- e.g., 'master_bank_Mathematics'
+    hub_id TEXT NOT NULL,                -- Institutional Hub ID
+    payload JSONB NOT NULL,              -- The actual data payload
     last_updated TIMESTAMPTZ DEFAULT NOW(),
-    user_id UUID                         
+    user_id UUID                         -- Optional owner mapping
 );
 
--- Staff Reward & Trade Ledger (Instructional Incentives)
--- This table tracks the trading of question shards for credit.
-CREATE TABLE IF NOT EXISTS public.uba_staff_rewards (
-    id TEXT PRIMARY KEY,
-    staff_email TEXT NOT NULL,
-    subject TEXT NOT NULL,
-    hub_id TEXT NOT NULL,
-    status TEXT DEFAULT 'PENDING',
-    amount NUMERIC(10,2) DEFAULT 0,
-    quality_rank INTEGER DEFAULT 0,
-    shards_pack JSONB,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    approved_at TIMESTAMPTZ
-);
-
--- Bulk Process Ledger: Tracks mass enrollment/CSV jobs
+-- ==========================================================
+-- AUDIT HUB: Bulk Transaction Logs
+-- ==========================================================
 CREATE TABLE IF NOT EXISTS public.uba_bulk_logs (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     hub_id TEXT NOT NULL,
     job_type TEXT NOT NULL,
     status TEXT NOT NULL,
     filename TEXT,
-    success_count INTEGER DEFAULT 0,
-    error_count INTEGER DEFAULT 0,
+    success_count INTEGER,
+    error_count INTEGER,
     actor_node TEXT,
-    timestamp TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Global Audit Ledger
-CREATE TABLE IF NOT EXISTS public.uba_audit (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    timestamp TIMESTAMPTZ DEFAULT NOW(),
-    action TEXT NOT NULL,
-    target TEXT NOT NULL,
-    actor TEXT NOT NULL,
-    details TEXT,
-    year TEXT DEFAULT EXTRACT(YEAR FROM NOW())::TEXT
-);
-
--- ==========================================================
--- 2. SECURITY OVERRIDE (OPEN HUB PROTOCOL)
--- ==========================================================
-
+-- Security Protocol: Disable RLS for seamless cross-node syncing
 ALTER TABLE public.uba_identities DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uba_persistence DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.uba_staff_rewards DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.uba_audit DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uba_bulk_logs DISABLE ROW LEVEL SECURITY;
 
--- Seed HQ Controller Shard for global reference
-INSERT INTO public.uba_identities (email, full_name, node_id, hub_id, role)
-VALUES ('leumasgenbo4@gmail.com', 'HQ CONTROLLER', 'MASTER-NODE-01', 'NETWORK', 'school_admin')
-ON CONFLICT (email) DO NOTHING;
+-- High-Performance Indexing for Role Handshakes
+CREATE INDEX IF NOT EXISTS idx_uba_identities_role ON public.uba_identities(role);
+CREATE INDEX IF NOT EXISTS idx_uba_identities_handshake ON public.uba_identities(full_name, node_id);
+CREATE INDEX IF NOT EXISTS idx_uba_persistence_hub ON public.uba_persistence(hub_id);

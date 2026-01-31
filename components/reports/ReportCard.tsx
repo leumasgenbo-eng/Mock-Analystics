@@ -217,7 +217,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
 
             {/* EXTENSION: SPECIFIC COGNITIVE ANALYSIS - 60px (6p) Height Constraint */}
             <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 mb-2 shrink-0 relative overflow-hidden h-[60px] flex flex-col justify-center">
-               <div className="absolute top-0 right-0 px-2 py-0.5 bg-slate-200 text-slate-600 text-[4px] font-black uppercase tracking-widest rounded-bl-lg">Cognitive Analysis Shard</div>
+               <div className="absolute top-0 right-0 px-2 py-0.5 bg-slate-200 text-slate-600 text-[4px] font-black uppercase tracking-widest rounded-bl-lg">Specific Cognitive Analysis Shard</div>
                <p className="text-[8px] font-black text-blue-900 uppercase leading-tight">Primary cognitive strength identified in ENGLISH LANGUAGE (53.9%).</p>
                <p className="text-[7.5px] font-bold text-slate-500 uppercase leading-tight italic mt-1">The candidate maintains a consistent credit-level (C4) proficiency across 9 disciplines, indicating a stable but non-specialized output in technical and core areas outside of language arts.</p>
             </div>

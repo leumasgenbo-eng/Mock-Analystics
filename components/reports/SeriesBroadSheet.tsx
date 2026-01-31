@@ -41,13 +41,20 @@ const SeriesBroadSheet: React.FC<SeriesBroadSheetProps> = ({ students, settings,
       <ReportBrandingHeader 
         settings={settings} 
         onSettingChange={onSettingChange} 
-        reportTitle="INSTITUTIONAL PERFORMANCE SERIES TRACKER"
+        reportTitle={settings.examTitle}
         subtitle="LONGITUDINAL ACADEMIC JOURNEY (MOCKS 1-10)"
         isLandscape={true}
       />
+      
+      <div className="flex justify-center -mt-4 mb-8">
+         <div className="bg-gray-100 px-6 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex gap-2">
+            <span>Academic Cycle:</span>
+            <EditableField value={settings.academicYear} onChange={(v) => onSettingChange('academicYear', v)} className="font-bold text-blue-900" />
+         </div>
+      </div>
 
       {/* 2. Longitudinal Data Matrix */}
-      <div className="shadow-2xl border border-gray-200 rounded-[2.5rem] bg-white overflow-hidden relative group mt-8">
+      <div className="shadow-2xl border border-gray-200 rounded-[2.5rem] bg-white overflow-hidden relative group">
         <div className="overflow-x-auto custom-scrollbar-horizontal scroll-smooth">
           <table className="w-full text-[10px] border-collapse min-w-[1200px]">
             <thead>

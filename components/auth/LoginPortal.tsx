@@ -17,9 +17,6 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const MASTER_ADMIN_NAME = 'HQ CONTROLLER';
-  const MASTER_ADMIN_ID = 'MASTER-NODE-01';
-
   const handleGateSelect = (role: UserRole) => {
     setActiveGate(role);
     setError(null);
@@ -40,13 +37,7 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
     }
 
     try {
-      // 1. MASTER OVERRIDE
-      if (inputName === MASTER_ADMIN_NAME && inputId === MASTER_ADMIN_ID) {
-        onSuperAdminLogin();
-        return;
-      }
-
-      // 2. RECALL FROM DB (ANONYMOUS)
+      // 1. RECALL FROM DB (UNIFIED HANDSHAKE)
       const { data: identity, error: idError } = await supabase
         .from('uba_identities')
         .select('*')
@@ -60,6 +51,13 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
         throw new Error("Identity Mismatch: Handshake particulars not found in registry.");
       }
 
+      // 2. CHECK FOR SUPER ADMIN PRIVILEGE
+      if (identity.role === 'super_admin') {
+        onSuperAdminLogin();
+        return;
+      }
+
+      // 3. SECTOR GATE VERIFICATION
       const roleMap: Record<string, string> = { 
         'school_admin': 'admin', 
         'facilitator': 'facilitator', 
@@ -67,15 +65,15 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
       };
       
       if (roleMap[identity.role] !== activeGate) {
-        throw new Error(`Gate Refusal: This identity node belongs to the ${identity.role} sector.`);
+        throw new Error(`Gate Refusal: This identity node belongs to the ${identity.role.replace('_', ' ')} sector.`);
       }
 
-      // 3. SUCCESSFUL HANDSHAKE
+      // 4. SUCCESSFUL LOGIN
       onLoginSuccess(identity.hub_id, {
         name: identity.full_name,
         nodeId: identity.node_id,
         role: identity.role,
-        subject: identity.role === 'facilitator' ? 'GENERAL' : undefined // In a real app we'd fetch this from shards
+        subject: identity.role === 'facilitator' ? 'GENERAL' : undefined
       });
 
     } catch (err: any) { 
@@ -106,7 +104,18 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
              </button>
            ))}
         </div>
-        <div className="mt-16 text-center"><button onClick={onSwitchToRegister} className="text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-white transition-colors">Onboard New Institution</button></div>
+        <div className="mt-16 text-center space-y-4">
+          <button onClick={onSwitchToRegister} className="text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-white transition-colors">Onboard New Institution</button>
+          <div className="pt-4 border-t border-white/5 opacity-40 hover:opacity-100 transition-opacity">
+            <p className="text-[7px] text-slate-600 uppercase tracking-widest mb-2">Master Handshake (Super-Admin Only)</p>
+            <button 
+              onClick={() => { setFullName('HQ CONTROLLER'); setNodeId('MASTER-NODE-01'); handleGateSelect('admin'); }} 
+              className="text-[8px] font-black text-blue-500 border border-blue-500/20 px-4 py-1 rounded-full uppercase tracking-widest hover:bg-blue-500 hover:text-white transition-all"
+            >
+              Verify Master Shard
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -122,7 +131,7 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
         <div className="text-center relative mb-12">
           <div className={`w-24 h-24 mx-auto mb-6 rounded-3xl flex items-center justify-center text-white shadow-2xl border border-white/20 uppercase font-black text-xs bg-${gateColor}-600`}>{activeGate?.substring(0, 3)}</div>
           <h2 className="text-2xl font-black text-white uppercase tracking-tight">IDENTITY RECALL</h2>
-          <p className={`text-[9px] font-black text-${gateColor}-400 uppercase tracking-[0.4em] mt-3`}>Authorized Recall</p>
+          <p className={`text-[9px] font-black text-${gateColor}-400 uppercase tracking-[0.4em] mt-3`}>Authorized Recall Protocol</p>
         </div>
 
         <form onSubmit={handleSyncIdentity} className="space-y-6">
