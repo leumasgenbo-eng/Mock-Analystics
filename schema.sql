@@ -1,3 +1,4 @@
+
 -- ==========================================================
 -- 1. CORE TABLE STRUCTURE (ANONYMOUS ACCESS MODE)
 -- ==========================================================
@@ -13,26 +14,35 @@ CREATE TABLE IF NOT EXISTS public.uba_identities (
 );
 
 -- Persistence Hub: JSON Shards (Open Access via Hub ID)
--- Key Structures:
--- 1. [HUB_ID]_settings: Global institutional config
--- 2. [HUB_ID]_students: Array of pupil identity shards
--- 3. [HUB_ID]_facilitators: Faculty assignment mapping
--- 4. registry_[HUB_ID]: Discovery metadata for HQ
--- 5. master_bank_[SUBJECT]: HQ Master Questions (Propagated globally)
 CREATE TABLE IF NOT EXISTS public.uba_persistence (
     id TEXT PRIMARY KEY,                 -- e.g., 'SMA-2025-001_settings'
     hub_id TEXT NOT NULL,
     payload JSONB NOT NULL,
     last_updated TIMESTAMPTZ DEFAULT NOW(),
-    user_id UUID                         -- Kept for structural compatibility but unused
+    user_id UUID                         
+);
+
+-- Staff Reward & Trade Ledger (Instructional Incentives)
+-- This table tracks the trading of question shards for credit.
+CREATE TABLE IF NOT EXISTS public.uba_staff_rewards (
+    id TEXT PRIMARY KEY,
+    staff_email TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    hub_id TEXT NOT NULL,
+    status TEXT DEFAULT 'PENDING',
+    amount NUMERIC(10,2) DEFAULT 0,
+    quality_rank INTEGER DEFAULT 0,
+    shards_pack JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    approved_at TIMESTAMPTZ
 );
 
 -- Bulk Process Ledger: Tracks mass enrollment/CSV jobs
 CREATE TABLE IF NOT EXISTS public.uba_bulk_logs (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     hub_id TEXT NOT NULL,
-    job_type TEXT NOT NULL,              -- e.g., 'PUPIL_ENROLLMENT'
-    status TEXT NOT NULL,                -- e.g., 'COMPLETED', 'FAILED'
+    job_type TEXT NOT NULL,
+    status TEXT NOT NULL,
     filename TEXT,
     success_count INTEGER DEFAULT 0,
     error_count INTEGER DEFAULT 0,
@@ -55,10 +65,9 @@ CREATE TABLE IF NOT EXISTS public.uba_audit (
 -- 2. SECURITY OVERRIDE (OPEN HUB PROTOCOL)
 -- ==========================================================
 
--- Disable RLS to ensure "it just works" without Auth sessions
--- Note: Re-running these commands is non-destructive
 ALTER TABLE public.uba_identities DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uba_persistence DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.uba_staff_rewards DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uba_audit DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uba_bulk_logs DISABLE ROW LEVEL SECURITY;
 

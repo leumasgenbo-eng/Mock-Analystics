@@ -1,15 +1,16 @@
 
-import React, { useState, useEffect } from 'react';
-import { MasterQuestion, BloomsScale } from '../../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { MasterQuestion, BloomsScale, StaffRewardTrade } from '../../types';
 import { supabase } from '../../supabaseClient';
 
 interface LikelyQuestionDeskProps {
-  activeFacilitator?: { name: string; subject: string } | null;
+  activeFacilitator?: { name: string; subject: string; email?: string } | null;
+  schoolName?: string;
 }
 
 const BLOOMS: BloomsScale[] = ['Knowledge', 'Understanding', 'Application', 'Analysis', 'Synthesis', 'Evaluation'];
 
-const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitator }) => {
+const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitator, schoolName }) => {
   const [questions, setQuestions] = useState<MasterQuestion[]>([]);
   const [formData, setFormData] = useState({
     type: 'OBJECTIVE' as 'OBJECTIVE' | 'THEORY',
@@ -25,6 +26,7 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
     diagramUrl: ''
   });
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showTradePopup, setShowTradePopup] = useState(false);
 
   const subject = activeFacilitator?.subject || 'English Language';
 
@@ -39,6 +41,8 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
     };
     if (activeFacilitator) fetchMySubmissions();
   }, [subject, activeFacilitator]);
+
+  const untradedCount = useMemo(() => questions.filter(q => !q.isTraded).length, [questions]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -57,6 +61,7 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
       id: `LQ-${Date.now()}-${Math.random().toString(36).substring(7)}`,
       originalIndex: questions.length + 1,
       ...formData,
+      isTraded: false,
       parts: formData.type === 'THEORY' ? [
         { partLabel: 'a.i', text: '', possibleAnswers: '', markingScheme: '', weight: 2, blooms: 'Knowledge' }
       ] : []
@@ -66,14 +71,12 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
     setIsSyncing(true);
     
     try {
-      // Save to facilitator's personal likely bank
       await supabase.from('uba_persistence').upsert({
          id: `likely_${subject.replace(/\s+/g, '')}_${activeFacilitator?.name.replace(/\s+/g, '')}`,
          payload: nextQs,
          last_updated: new Date().toISOString()
       });
 
-      // Also append to global master subject bank for HQ visibility
       const bankId = `master_bank_${subject.replace(/\s+/g, '')}`;
       const { data: currentMaster } = await supabase.from('uba_persistence').select('payload').eq('id', bankId).maybeSingle();
       const updatedMaster = [...(currentMaster?.payload || []), newQ];
@@ -84,21 +87,15 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
       });
 
       setQuestions(nextQs);
-      // Reset form
       setFormData({
-        type: 'OBJECTIVE',
-        strand: '',
-        subStrand: '',
-        indicator: '',
-        questionText: '',
-        instruction: '',
-        correctKey: 'A',
-        answerScheme: '',
-        weight: formData.type === 'OBJECTIVE' ? 1 : 10,
-        blooms: 'Knowledge',
-        diagramUrl: ''
+        type: 'OBJECTIVE', strand: '', subStrand: '', indicator: '', questionText: '', instruction: '', correctKey: 'A', answerScheme: '', weight: formData.type === 'OBJECTIVE' ? 1 : 10, blooms: 'Knowledge', diagramUrl: ''
       });
-      alert("Likely question mirrored to HQ Master Bank.");
+
+      if (untradedCount + 1 >= 5) {
+         setShowTradePopup(true);
+      } else {
+         alert("Likely question mirrored to HQ Master Bank.");
+      }
     } catch (error) {
       console.error("Submission failed:", error);
     } finally {
@@ -106,13 +103,89 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
     }
   };
 
+  const handleExecuteTrade = async () => {
+    if (!activeFacilitator) return;
+    const untraded = questions.filter(q => !q.isTraded).slice(0, 5);
+    const untradedIds = untraded.map(q => q.id);
+    
+    const tradeRequest: StaffRewardTrade = {
+      id: `TR-${Date.now()}`,
+      staffName: activeFacilitator.name,
+      staffEmail: activeFacilitator.email || 'N/A',
+      schoolName: schoolName || 'UNITED BAYLOR ACADEMY',
+      subject: subject,
+      questionIds: untradedIds,
+      submissionCount: 5,
+      status: 'PENDING',
+      requestTimestamp: new Date().toISOString()
+    };
+
+    try {
+      // 1. Mark local shards as traded
+      const updatedQs = questions.map(q => untradedIds.includes(q.id) ? { ...q, isTraded: true } : q);
+      await supabase.from('uba_persistence').upsert({
+        id: `likely_${subject.replace(/\s+/g, '')}_${activeFacilitator?.name.replace(/\s+/g, '')}`,
+        payload: updatedQs,
+        last_updated: new Date().toISOString()
+      });
+
+      // 2. Push trade to HQ ledger
+      const { data: currentTrades } = await supabase.from('uba_persistence').select('payload').eq('id', 'global_staff_rewards').maybeSingle();
+      const nextTrades = [...(currentTrades?.payload || []), tradeRequest];
+      await supabase.from('uba_persistence').upsert({
+        id: 'global_staff_rewards',
+        payload: nextTrades,
+        last_updated: new Date().toISOString()
+      });
+
+      setQuestions(updatedQs);
+      setShowTradePopup(false);
+      alert("TRADE REQUESTED: Shard pack submitted to HQ Marketing for valuation.");
+    } catch (e) {
+      alert("Trade process interrupted.");
+    }
+  };
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 max-w-6xl mx-auto">
+    <div className="space-y-8 animate-in fade-in duration-500 max-w-6xl mx-auto pb-20">
+      
+      {/* TRADE POPUP */}
+      {showTradePopup && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[200] flex items-center justify-center p-6">
+           <div className="bg-white rounded-[3.5rem] p-12 max-w-lg w-full shadow-2xl border border-gray-100 text-center space-y-8 animate-in zoom-in-95">
+              <div className="w-24 h-24 bg-emerald-500 text-white rounded-[2rem] flex items-center justify-center mx-auto shadow-lg text-4xl font-black">5</div>
+              <div className="space-y-2">
+                 <h3 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Milestone Unlocked</h3>
+                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.4em]">Instructional Credit Eligibility</p>
+              </div>
+              <p className="text-sm font-medium text-slate-600 leading-relaxed italic">
+                You have contributed 5 high-precision question shards. Would you like to trade this pack for mobile credit valuation?
+              </p>
+              <div className="flex gap-4">
+                 <button onClick={() => setShowTradePopup(false)} className="flex-1 py-4 rounded-2xl font-black text-[10px] uppercase text-slate-400 hover:text-slate-900 transition-colors">Later</button>
+                 <button onClick={handleExecuteTrade} className="flex-1 bg-blue-900 text-white py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl hover:bg-black transition-all">Trade Shard Pack</button>
+              </div>
+           </div>
+        </div>
+      )}
+
       <div className="bg-indigo-900 text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-        <div className="relative space-y-2">
-           <h3 className="text-2xl font-black uppercase tracking-tight">Facilitator's Likely Question Desk</h3>
-           <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-[0.4em]">Faculty Contribution Portal: {subject}</p>
+        <div className="relative flex justify-between items-center">
+           <div className="space-y-2">
+              <h3 className="text-2xl font-black uppercase tracking-tight">Likely Question Desk</h3>
+              <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-[0.4em]">Node: {subject} • Contributions Sync'd</p>
+           </div>
+           <div className="bg-white/10 px-6 py-4 rounded-[2rem] border border-white/10 flex items-center gap-6">
+              <div className="text-right">
+                 <span className="text-[8px] font-black text-blue-300 uppercase block mb-1">Untraded Shards</span>
+                 <p className="text-xl font-black font-mono">{untradedCount} / 5</p>
+              </div>
+              <div className="w-px h-8 bg-white/10"></div>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${untradedCount >= 5 ? 'bg-emerald-500 animate-pulse' : 'bg-white/10 text-white/20'}`}>
+                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              </div>
+           </div>
         </div>
       </div>
 
@@ -144,68 +217,58 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
             <div className="space-y-4">
                <input type="text" placeholder="STRAND..." value={formData.strand} onChange={e=>setFormData({...formData, strand: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-5 py-3 text-[10px] font-bold outline-none uppercase" />
                <input type="text" placeholder="SUB-STRAND..." value={formData.subStrand} onChange={e=>setFormData({...formData, subStrand: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-5 py-3 text-[10px] font-bold outline-none uppercase" />
-               <input type="text" placeholder="INDICATOR CODE (e.g. B9.1.1.1)..." value={formData.indicator} onChange={e=>setFormData({...formData, indicator: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-5 py-3 text-[10px] font-bold outline-none uppercase" />
-               <input type="text" placeholder="QUESTION INSTRUCTION..." value={formData.instruction} onChange={e=>setFormData({...formData, instruction: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-5 py-3 text-[10px] italic font-bold outline-none uppercase" />
+               <input type="text" placeholder="INDICATOR CODE..." value={formData.indicator} onChange={e=>setFormData({...formData, indicator: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-5 py-3 text-[10px] font-bold outline-none uppercase" />
+               <textarea placeholder="QUESTION BODY..." value={formData.questionText} onChange={e=>setFormData({...formData, questionText: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-5 py-4 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 min-h-[100px] uppercase" />
+               <textarea placeholder="ANSWER SCHEME..." value={formData.answerScheme} onChange={e=>setFormData({...formData, answerScheme: e.target.value})} className="w-full bg-slate-900 border border-slate-800 rounded-xl px-5 py-4 text-xs font-bold text-emerald-400 outline-none min-h-[80px] uppercase" />
                
-               <div className="space-y-2">
-                 <label className="text-[8px] font-black text-slate-500 uppercase ml-2">Question Body</label>
-                 <textarea placeholder="TYPE QUESTION HERE..." value={formData.questionText} onChange={e=>setFormData({...formData, questionText: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-5 py-4 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 min-h-[100px] uppercase" />
-               </div>
-
-               <div className="space-y-2">
-                 <label className="text-[8px] font-black text-slate-500 uppercase ml-2">Answer Scheme / Scoring Rubric</label>
-                 <textarea placeholder="EXPECTED ANSWER..." value={formData.answerScheme} onChange={e=>setFormData({...formData, answerScheme: e.target.value})} className="w-full bg-slate-900 border border-slate-800 rounded-xl px-5 py-4 text-xs font-bold text-emerald-400 outline-none min-h-[80px] uppercase" />
-               </div>
-
                <div className="flex items-center gap-4">
                   <div className="flex-1">
-                     <label className="text-[8px] font-black text-slate-500 uppercase ml-2">Weight (Points)</label>
+                     <label className="text-[8px] font-black text-slate-500 uppercase ml-2">Weight</label>
                      <input type="number" value={formData.weight} onChange={e=>setFormData({...formData, weight: parseInt(e.target.value)||0})} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-5 py-3 text-xs font-black outline-none" />
                   </div>
                   <div className="shrink-0 pt-4">
                      <input type="file" id="likely-diagram" className="hidden" accept="image/*" onChange={handleFileUpload} />
-                     <label htmlFor="likely-diagram" className={`px-4 py-3 rounded-xl text-[9px] font-black uppercase cursor-pointer transition-all border ${formData.diagramUrl ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-white text-blue-600 border-blue-100 hover:bg-blue-50'}`}>
-                        {formData.diagramUrl ? 'Diagram Ready' : 'Attach Diagram'}
+                     <label htmlFor="likely-diagram" className={`px-4 py-3 rounded-xl text-[9px] font-black uppercase cursor-pointer transition-all border ${formData.diagramUrl ? 'bg-emerald-600 text-white' : 'bg-white text-blue-600 border-blue-100'}`}>
+                        {formData.diagramUrl ? 'Diagram Attached' : 'Add Diagram'}
                      </label>
                   </div>
                </div>
             </div>
 
             <button type="submit" disabled={isSyncing} className="w-full bg-indigo-900 text-white py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-xl transition-all active:scale-95 disabled:opacity-50">
-               {isSyncing ? 'Synchronizing Shards...' : 'Mirror to HQ Master Bank'}
+               {isSyncing ? 'Synchronizing Shards...' : 'Submit Likely Item'}
             </button>
          </form>
 
-         <div className="lg:col-span-7 bg-slate-50 rounded-[2.5rem] border border-gray-100 shadow-inner flex flex-col h-full overflow-hidden">
+         <div className="lg:col-span-7 bg-slate-50 rounded-[2.5rem] border border-gray-100 shadow-inner flex flex-col overflow-hidden">
             <div className="p-6 bg-white border-b border-gray-100 flex justify-between items-center">
                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">My Submission Ledger</h4>
-               <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">{questions.length} Items Sync'd</span>
+               <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">{questions.length} Total</span>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4 max-h-[800px] no-scrollbar">
                {questions.map((q, i) => (
                   <div key={q.id} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-4 relative group">
                      <div className="flex justify-between items-start">
                         <div className="space-y-1">
-                           <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">{q.strand} → {q.subStrand} ({q.indicator})</span>
+                           <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">{q.strand} → {q.indicator}</span>
                            <div className="flex items-center gap-2">
                              <span className={`text-[8px] font-black px-2 py-0.5 rounded uppercase ${q.type === 'OBJECTIVE' ? 'bg-blue-100 text-blue-700' : 'bg-indigo-100 text-indigo-700'}`}>{q.type}</span>
-                             <span className="text-[8px] font-bold text-gray-400 uppercase">Bloom's: {q.blooms}</span>
+                             {q.isTraded && <span className="bg-emerald-100 text-emerald-700 text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">Verified for Trade</span>}
                            </div>
                         </div>
                         <span className="text-[10px] font-black text-gray-300">#{questions.length - i}</span>
                      </div>
                      <p className="text-xs font-bold text-slate-700 uppercase leading-relaxed">"{q.questionText}"</p>
-                     {q.diagramUrl && <div className="w-20 h-20 rounded-lg overflow-hidden border border-gray-100"><img src={q.diagramUrl} className="w-full h-full object-cover" /></div>}
                      <div className="pt-3 border-t border-gray-50 flex justify-between items-center">
-                        <span className="text-[8px] font-black text-emerald-600 uppercase tracking-widest">Key: {q.type === 'OBJECTIVE' ? q.correctKey : 'Rubric Sync' }</span>
-                        <span className="text-[8px] font-black text-slate-400">Weight: {q.weight} pts</span>
+                        <span className="text-[8px] font-black text-slate-400 uppercase">Weight: {q.weight} pts</span>
+                        <span className="text-[8px] font-bold text-slate-300 uppercase">Bloom's: {q.blooms}</span>
                      </div>
                   </div>
                ))}
                {questions.length === 0 && (
                   <div className="py-20 text-center opacity-30 flex flex-col items-center gap-4">
                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                     <p className="font-black uppercase text-[10px] tracking-widest">No likely questions mirrored yet</p>
+                     <p className="font-black uppercase text-[10px] tracking-widest">No instructional submissions recorded</p>
                   </div>
                )}
             </div>

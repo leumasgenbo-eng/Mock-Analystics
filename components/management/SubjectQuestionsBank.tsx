@@ -23,12 +23,15 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
   // The actual questions displayed on the UI (Randomized & Batched)
   const [visibleShards, setVisibleShards] = useState<MasterQuestion[]>([]);
 
-  // 1. Fetch Subject Bank from Cloud
+  // 1. Fetch Subject Bank from Cloud (Includes all "Likely" submissions)
   useEffect(() => {
     const fetchBank = async () => {
       setIsLoading(true);
+      // Constructing bank ID consistent with LikelyQuestionDesk submissions
       const bankId = `master_bank_${selectedSubject.replace(/\s+/g, '')}`;
-      const { data } = await supabase.from('uba_persistence').select('payload').eq('id', bankId).maybeSingle();
+      const { data, error } = await supabase.from('uba_persistence').select('payload').eq('id', bankId).maybeSingle();
+      
+      if (error) console.error("Bank Ingestion Error:", error);
       
       const questions = (data?.payload as MasterQuestion[]) || [];
       setMasterBank(questions);
@@ -118,6 +121,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
     a.download = `${selectedSubject.replace(/\s+/g, '_')}_${type.toUpperCase()}_HQ.txt`;
     a.click();
     URL.revokeObjectURL(url);
+    alert("HQ PACK DISPATCHED TO BROWSER.");
   };
 
   return (
@@ -159,7 +163,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
                  
                  <div className="space-y-5">
                     <div className="space-y-2">
-                       <label className="text-[8px] font-black text-slate-400 uppercase ml-3">Batch Size (Per Indicator)</label>
+                       <label className="text-[8px] font-black text-slate-400 uppercase ml-3">Batch Size (Restrict Download UI)</label>
                        <div className="grid grid-cols-4 gap-2">
                           {[5, 10, 40, 100].map(n => (
                             <button key={n} onClick={() => setBatchSize(n)} className={`py-2 rounded-xl text-[9px] font-black border transition-all ${batchSize === n ? 'bg-blue-900 text-white border-blue-900' : 'bg-slate-50 text-slate-400 border-gray-100'}`}>{n}</button>

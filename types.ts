@@ -66,7 +66,7 @@ export interface StaffAssignment {
   role: StaffRole;
   enrolledId: string; 
   taughtSubject?: string;
-  invigilations: InvigilationSlot[]; // Exactly 9 slots for the Register
+  invigilations: InvigilationSlot[]; 
   marking: {
     dateTaken: string;
     dateReturned: string;
@@ -311,6 +311,21 @@ export interface ForwardingData {
   approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
 }
 
+export interface StaffRewardTrade {
+  id: string;
+  staffName: string;
+  staffEmail: string;
+  schoolName: string;
+  subject: string;
+  questionIds: string[];
+  submissionCount: number;
+  status: 'PENDING' | 'RANKED' | 'APPROVED' | 'PAID';
+  qualityRank?: number; // 1-10
+  approvedAmount?: number;
+  requestTimestamp: string;
+  approvalTimestamp?: string;
+}
+
 export interface SerializedPupil {
   id: number;
   name: string;
@@ -355,6 +370,7 @@ export interface MasterQuestion {
   blooms: BloomsScale;
   parts: QuestionSubPart[];
   diagramUrl?: string;
+  isTraded?: boolean;
 }
 
 export interface QuestionPack {
