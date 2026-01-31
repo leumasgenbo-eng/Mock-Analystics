@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo } from 'react';
 import { StudentData, GlobalSettings, ProcessedStudent, MockSeriesRecord, MockScoreSet, MockSnapshotMetadata } from '../../types';
 import { SUBJECT_REMARKS } from '../../constants';
@@ -15,394 +14,140 @@ interface ScoreEntryPortalProps {
   activeFacilitator?: { name: string; subject: string } | null;
 }
 
-const GENERAL_REPORT_TEMPLATES = [
-  "The performance in this series shows significant mastery of core concepts across the cohort.",
-  "Candidates exhibited strength in Objective questions but struggled with Theory applications.",
-  "General understanding of the subject matter is satisfactory, but remedial attention is needed for Section B.",
-  "Outstanding performance recorded; most candidates exceeded the institutional mean.",
-  "Poor handwriting and lack of clarity in Section B significantly affected overall scores."
-];
-
 const ScoreEntryPortal: React.FC<ScoreEntryPortalProps> = ({ 
   students, setStudents, settings, onSettingChange, subjects, processedSnapshot, onSave, activeFacilitator 
 }) => {
-  // ROLE ENFORCEMENT: If facilitator, lock to their assigned subject
-  const [selectedSubject, setSelectedSubject] = useState(
-    activeFacilitator?.subject || subjects[0]
-  );
-  
+  const [selectedSubject, setSelectedSubject] = useState(activeFacilitator?.subject || subjects[0]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showCustomReport, setShowCustomReport] = useState(false);
   const scoreFileInputRef = useRef<HTMLInputElement>(null);
-
-  const activeGeneralReport = useMemo(() => {
-    return settings.resourcePortal?.[settings.activeMock]?.[selectedSubject]?.generalReport || "";
-  }, [settings.resourcePortal, settings.activeMock, selectedSubject]);
-
-  const updateGeneralReport = (report: string) => {
-    const currentPortal = settings.resourcePortal || {};
-    const mockData = currentPortal[settings.activeMock] || {};
-    const subjectData = mockData[selectedSubject] || { indicators: [] };
-
-    onSettingChange('resourcePortal', {
-      ...currentPortal,
-      [settings.activeMock]: {
-        ...mockData,
-        [selectedSubject]: { ...subjectData, generalReport: report }
-      }
-    });
-  };
 
   const handleUpdateExamSubScore = (studentId: number, subject: string, section: 'sectionA' | 'sectionB', value: string) => {
     const numericVal = parseInt(value) || 0;
     setStudents(prev => prev.map(s => {
       if (s.id !== studentId) return s;
-      const mockSet = s.mockData?.[settings.activeMock] || { 
-        scores: {}, 
-        sbaScores: {}, 
-        examSubScores: {}, 
-        facilitatorRemarks: {}, 
-        observations: { facilitator: "", invigilator: "", examiner: "" }, 
-        attendance: 0, 
-        conductRemark: "" 
-      };
+      const mockSet = s.mockData?.[settings.activeMock] || { scores: {}, sbaScores: {}, examSubScores: {}, facilitatorRemarks: {}, observations: { facilitator: "", invigilator: "", examiner: "" }, attendance: 0, conductRemark: "" };
       const subScores = mockSet.examSubScores[subject] || { sectionA: 0, sectionB: 0 };
       const newSubScores = { ...subScores, [section]: Math.max(0, numericVal) };
-      return { 
-        ...s, 
-        mockData: { 
-          ...(s.mockData || {}), 
-          [settings.activeMock]: { 
-            ...mockSet, 
-            examSubScores: { ...mockSet.examSubScores, [subject]: newSubScores }, 
-            scores: { ...mockSet.scores, [subject]: newSubScores.sectionA + newSubScores.sectionB } 
-          } 
-        } 
-      };
+      return { ...s, mockData: { ...(s.mockData || {}), [settings.activeMock]: { ...mockSet, examSubScores: { ...mockSet.examSubScores, [subject]: newSubScores }, scores: { ...mockSet.scores, [subject]: newSubScores.sectionA + newSubScores.sectionB } } } };
     }));
-  };
-
-  const handleUpdateRemark = (studentId: number, subject: string, remark: string) => {
-    setStudents(prev => prev.map(s => {
-      if (s.id !== studentId) return s;
-      const mockSet = s.mockData?.[settings.activeMock] || { 
-        scores: {}, 
-        sbaScores: {}, 
-        examSubScores: {}, 
-        facilitatorRemarks: {}, 
-        observations: { facilitator: "", invigilator: "", examiner: "" }, 
-        attendance: 0, 
-        conductRemark: "" 
-      };
-      const newRemarks = { ...(mockSet.facilitatorRemarks || {}), [subject]: remark };
-      return { 
-        ...s, 
-        mockData: { 
-          ...(s.mockData || {}), 
-          [settings.activeMock]: { ...mockSet, facilitatorRemarks: newRemarks } 
-        } 
-      };
-    }));
-  };
-
-  const handleDownloadScores = () => {
-    const headers = ["ID", "Pupil Name", "Subject", "Section A (Obj)", "Section B (Theory)", "Remark"];
-    const rows = students.map(s => {
-      const mockSet = s.mockData?.[settings.activeMock];
-      const subSc = mockSet?.examSubScores?.[selectedSubject] || { sectionA: 0, sectionB: 0 };
-      const remark = mockSet?.facilitatorRemarks?.[selectedSubject] || "";
-      return [
-        s.id,
-        s.name,
-        selectedSubject,
-        subSc.sectionA,
-        subSc.sectionB,
-        remark
-      ];
-    });
-    
-    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Scores_${selectedSubject.replace(/\s+/g, '_')}_${settings.activeMock}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleUploadScores = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      const lines = text.split("\n");
-      let updatedCount = 0;
-
-      setStudents(prev => {
-        const next = [...prev];
-        lines.slice(1).forEach(line => {
-          if (!line.trim()) return;
-          const columns = line.split(",");
-          const id = parseInt(columns[0]);
-          const objScore = parseInt(columns[3]) || 0;
-          const thyScore = parseInt(columns[4]) || 0;
-          const remark = columns[5] || "";
-
-          const studentIdx = next.findIndex(s => s.id === id);
-          if (studentIdx > -1) {
-            const student = next[studentIdx];
-            const mockSet = student.mockData?.[settings.activeMock] || { 
-              scores: {}, sbaScores: {}, examSubScores: {}, facilitatorRemarks: {}, 
-              observations: { facilitator: "", invigilator: "", examiner: "" }, 
-              attendance: 0, conductRemark: "" 
-            };
-            
-            const newSubScores = { sectionA: objScore, sectionB: thyScore };
-            const newRemarks = { ...(mockSet.facilitatorRemarks || {}), [selectedSubject]: remark };
-            
-            next[studentIdx] = {
-              ...student,
-              mockData: {
-                ...(student.mockData || {}),
-                [settings.activeMock]: {
-                  ...mockSet,
-                  examSubScores: { ...mockSet.examSubScores, [selectedSubject]: newSubScores },
-                  scores: { ...mockSet.scores, [selectedSubject]: objScore + thyScore },
-                  facilitatorRemarks: newRemarks
-                }
-              }
-            };
-            updatedCount++;
-          }
-        });
-        return next;
-      });
-
-      alert(`Sync Complete: ${updatedCount} scores updated for ${selectedSubject}.`);
-      if (scoreFileInputRef.current) scoreFileInputRef.current.value = "";
-    };
-    reader.readAsText(file);
-  };
-
-  const handleCommitScores = () => {
-    if (window.confirm(`Snapshot ALL SUBJECT RESULTS for the cohort into ${settings.activeMock}? This validates data integrity across the Hub.`)) {
-      const today = new Date().toISOString().split('T')[0];
-      
-      const currentSnapshots = settings.mockSnapshots || {};
-      const mockMeta = currentSnapshots[settings.activeMock] || {
-        submissionDate: today,
-        subjectsSubmitted: [],
-        subjectSubmissionDates: {},
-        confirmedScripts: [],
-        approvalStatus: 'pending',
-        approvedBy: settings.headTeacherName
-      };
-
-      const updatedSubjects = Array.from(new Set([...mockMeta.subjectsSubmitted, selectedSubject]));
-      const updatedDates = { ...(mockMeta.subjectSubmissionDates || {}), [selectedSubject]: today };
-
-      onSettingChange('mockSnapshots', {
-        ...currentSnapshots,
-        [settings.activeMock]: {
-          ...mockMeta,
-          submissionDate: today,
-          subjectsSubmitted: updatedSubjects,
-          subjectSubmissionDates: updatedDates
-        }
-      });
-
-      setStudents(prev => {
-        const nextStudents = prev.map(student => {
-          const computed = processedSnapshot.find(p => p.id === student.id);
-          if (!computed) return student;
-
-          const record: MockSeriesRecord = { 
-            aggregate: computed.bestSixAggregate, 
-            rank: computed.rank, 
-            date: today, 
-            reviewStatus: 'pending', 
-            isApproved: true, 
-            subjectPerformanceSummary: computed.subjects.reduce((acc, s) => ({ 
-              ...acc, 
-              [s.subject]: { mean: Math.round(s.finalCompositeScore), grade: s.grade } 
-            }), {}), 
-            subScores: { ...(student.mockData?.[settings.activeMock]?.examSubScores || {}) }
-          };
-
-          return { 
-            ...student, 
-            seriesHistory: { ...(student.seriesHistory || {}), [settings.activeMock]: record } 
-          };
-        });
-        return nextStudents;
-      });
-
-      setTimeout(() => {
-        onSave();
-        alert(`Institutional Milestone: ${settings.activeMock} has been successfully snapshotted into the archive.`);
-      }, 300);
-    }
   };
 
   const filtered = students.filter(s => (s.name || "").toLowerCase().includes(searchTerm.toLowerCase()));
   const subjectSpecificRemarks = SUBJECT_REMARKS[selectedSubject] || SUBJECT_REMARKS["General"];
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-20">
-      {activeFacilitator && (
-        <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-3xl flex items-center gap-4">
-           <div className="w-10 h-10 bg-indigo-600 text-white rounded-2xl flex items-center justify-center font-black shadow-lg">
-              {activeFacilitator.name.charAt(0)}
+    <div className="space-y-10 animate-in fade-in duration-500 pb-20 font-sans">
+      {/* CAPI CONTROL CONSOLE */}
+      <div className="bg-slate-950 text-white p-10 rounded-[3.5rem] shadow-2xl relative overflow-hidden border border-white/5">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/10 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
+        <div className="relative flex flex-col xl:flex-row justify-between items-center gap-10">
+           <div className="space-y-2">
+              <h2 className="text-3xl font-black uppercase tracking-tighter">CAPI Terminal Matrix</h2>
+              <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em]">Authorized Data Entry Node — {settings.activeMock}</p>
            </div>
-           <div>
-              <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none">Facilitator Node Verified</p>
-              <h4 className="text-sm font-black text-indigo-900 uppercase mt-1">{activeFacilitator.name} — {activeFacilitator.subject}</h4>
-           </div>
-        </div>
-      )}
-
-      <div className="bg-white rounded-3xl p-8 shadow-2xl border border-gray-100 flex flex-col xl:flex-row justify-between items-center gap-8">
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
-           <div className="space-y-1">
-             <label className="text-[9px] font-black text-blue-900 uppercase">Academy Name</label>
-             <div className="text-xl font-black uppercase text-gray-800 py-1">{settings.schoolName}</div>
-           </div>
-           <div className="space-y-1">
-             <label className="text-[9px] font-black text-blue-900 uppercase">Academy Index</label>
-             <div className="text-xl font-black text-gray-800 py-1">{settings.schoolNumber || "UBA-SYNC"}</div>
-           </div>
-           <div className="space-y-1">
-             <label className="text-[9px] font-black text-blue-900 uppercase">Mock Series</label>
-             <select 
-               value={settings.activeMock} 
-               onChange={(e) => onSettingChange('activeMock', e.target.value)} 
-               className="w-full bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm font-black outline-none"
-             >
-                {Array.from({ length: 10 }, (_, i) => `MOCK ${i+1}`).map(m => <option key={m} value={m}>{m}</option>)}
-             </select>
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full xl:w-auto">
+              <div className="space-y-2">
+                 <label className="text-[8px] font-black text-slate-500 uppercase ml-4">Active Disciplines Shard</label>
+                 <select 
+                   value={selectedSubject} 
+                   onChange={(e) => setSelectedSubject(e.target.value)} 
+                   disabled={!!activeFacilitator}
+                   className="w-full md:w-80 bg-slate-900 border border-white/10 rounded-[2rem] px-8 py-4 text-xs font-black uppercase text-blue-400 outline-none focus:ring-4 focus:ring-blue-500/20 transition-all disabled:opacity-30"
+                 >
+                   {subjects.map(s => <option key={s} value={s}>{s}</option>)}
+                 </select>
+              </div>
+              <div className="space-y-2">
+                 <label className="text-[8px] font-black text-slate-500 uppercase ml-4">Cohort Matrix Filter</label>
+                 <div className="relative">
+                   <input 
+                     type="text" 
+                     placeholder="ID OR NAME..." 
+                     value={searchTerm} 
+                     onChange={(e) => setSearchTerm(e.target.value)} 
+                     className="w-full bg-slate-900 border border-white/10 rounded-[2rem] px-12 py-4 text-xs font-bold text-white outline-none focus:ring-4 focus:ring-blue-500/20 transition-all uppercase" 
+                   />
+                   <svg className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-600" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                 </div>
+              </div>
            </div>
         </div>
       </div>
 
-      {/* Subject Selector: Disabled if facilitator */}
-      <div className="bg-white rounded-3xl border border-gray-100 shadow-xl overflow-hidden">
-        <div className="bg-gray-50 px-8 py-4 border-b border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
-           <div className="flex flex-col gap-1">
-              <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-2">Active Subject shard</label>
-              <select 
-                value={selectedSubject} 
-                onChange={(e) => setSelectedSubject(e.target.value)} 
-                disabled={!!activeFacilitator}
-                className={`w-full md:w-auto border rounded-xl px-4 py-2 font-black text-xs uppercase outline-none shadow-sm transition-all ${!!activeFacilitator ? 'bg-gray-200 text-gray-500 border-gray-300 cursor-not-allowed' : 'bg-white border-gray-200 text-blue-900 focus:ring-2 focus:ring-blue-500/20'}`}
-              >
-                {subjects.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-           </div>
+      {/* TERMINAL DATA SHARDS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+         {filtered.map(student => {
+            const mockSet = student.mockData?.[settings.activeMock] || { scores: {}, examSubScores: {}, facilitatorRemarks: {} };
+            const subSc = mockSet.examSubScores[selectedSubject] || { sectionA: 0, sectionB: 0 };
+            return (
+              <div key={student.id} className="bg-white rounded-[3rem] border border-gray-100 shadow-xl overflow-hidden hover:shadow-2xl hover:border-blue-200 transition-all group">
+                 <div className="p-8 space-y-6">
+                    <div className="flex justify-between items-start">
+                       <div className="space-y-1">
+                          <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest leading-none">Candidate Node</p>
+                          <h4 className="text-lg font-black text-slate-950 uppercase truncate max-w-[180px]">{student.name}</h4>
+                          <span className="text-[9px] font-mono font-bold text-gray-400">ID: {student.id.toString().padStart(6, '0')}</span>
+                       </div>
+                       <div className={`w-3 h-3 rounded-full shadow-lg ${(subSc.sectionA + subSc.sectionB) > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-200'}`}></div>
+                    </div>
 
-           <div className="flex gap-2 w-full md:w-auto">
-             <button 
-               onClick={handleDownloadScores}
-               className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white border border-blue-100 text-blue-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-blue-50 transition-all shadow-sm"
-             >
-               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-               Download
-             </button>
-             <button 
-               onClick={() => scoreFileInputRef.current?.click()}
-               className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-blue-100 transition-all shadow-sm"
-             >
-               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-               Upload
-             </button>
-             <input type="file" ref={scoreFileInputRef} className="hidden" accept=".csv" onChange={handleUploadScores} />
-           </div>
+                    <div className="grid grid-cols-3 gap-4">
+                       <div className="space-y-2">
+                          <label className="text-[8px] font-black text-gray-400 uppercase text-center block tracking-widest">OBJ</label>
+                          <input 
+                            type="number" 
+                            value={subSc.sectionA} 
+                            onChange={(e) => handleUpdateExamSubScore(student.id, selectedSubject, 'sectionA', e.target.value)} 
+                            className="w-full bg-slate-50 border-2 border-gray-100 rounded-2xl py-4 text-center font-black text-blue-900 outline-none focus:border-blue-500 focus:bg-white transition-all text-xl" 
+                          />
+                       </div>
+                       <div className="space-y-2">
+                          <label className="text-[8px] font-black text-gray-400 uppercase text-center block tracking-widest">THY</label>
+                          <input 
+                            type="number" 
+                            value={subSc.sectionB} 
+                            onChange={(e) => handleUpdateExamSubScore(student.id, selectedSubject, 'sectionB', e.target.value)} 
+                            className="w-full bg-slate-50 border-2 border-gray-100 rounded-2xl py-4 text-center font-black text-blue-900 outline-none focus:border-blue-500 focus:bg-white transition-all text-xl" 
+                          />
+                       </div>
+                       <div className="space-y-2">
+                          <label className="text-[8px] font-black text-blue-600 uppercase text-center block tracking-widest">SUM</label>
+                          <div className="w-full bg-blue-950 text-white rounded-2xl py-4 text-center font-black text-2xl leading-none flex items-center justify-center h-[60px] shadow-lg">
+                             {subSc.sectionA + subSc.sectionB}
+                          </div>
+                       </div>
+                    </div>
 
-           <div className="relative w-full md:w-auto flex-1 max-w-md">
-             <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-300">
-               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-             </div>
-             <input 
-               type="text" 
-               placeholder="Search pupils..." 
-               value={searchTerm} 
-               onChange={(e) => setSearchTerm(e.target.value)} 
-               className="w-full bg-white border border-gray-200 rounded-xl pl-10 pr-4 py-2 text-xs font-bold outline-none shadow-sm focus:ring-2 focus:ring-blue-500/20" 
-             />
-           </div>
-        </div>
-        <table className="w-full text-left">
-          <thead className="bg-gray-100 text-gray-400 font-black uppercase text-[8px] tracking-widest">
-            <tr>
-              <th className="px-8 py-5">Pupil Identity</th>
-              <th className="px-4 py-5 text-center">Objective</th>
-              <th className="px-4 py-5 text-center">Theory</th>
-              <th className="px-6 py-5 text-center bg-blue-50 text-blue-900">Total</th>
-              <th className="px-8 py-5">Individual Remark / Observation</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {filtered.map(student => {
-              const mockSet = student.mockData?.[settings.activeMock] || { scores: {}, examSubScores: {}, facilitatorRemarks: {} };
-              const subSc = mockSet.examSubScores[selectedSubject] || { sectionA: 0, sectionB: 0 };
-              const currentRemark = mockSet.facilitatorRemarks?.[selectedSubject] || "";
-              
-              return (
-                <tr key={student.id} className="hover:bg-blue-50/30 transition-colors group">
-                  <td className="px-8 py-5">
-                    <span className="font-black text-gray-900 uppercase text-[11px] block">{student.name}</span>
-                    <span className="text-[8px] font-bold text-gray-400">ID: {student.id.toString().padStart(6, '0')}</span>
-                  </td>
-                  <td className="px-2 py-5 text-center">
-                    <input 
-                      type="number" 
-                      value={subSc.sectionA} 
-                      onChange={(e) => handleUpdateExamSubScore(student.id, selectedSubject, 'sectionA', e.target.value)} 
-                      className="w-16 text-center font-black py-2 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20" 
-                    />
-                  </td>
-                  <td className="px-2 py-5 text-center">
-                    <input 
-                      type="number" 
-                      value={subSc.sectionB} 
-                      onChange={(e) => handleUpdateExamSubScore(student.id, selectedSubject, 'sectionB', e.target.value)} 
-                      className="w-16 text-center font-black py-2 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20" 
-                    />
-                  </td>
-                  <td className="px-6 py-5 text-center bg-blue-50/10 font-black text-lg text-blue-900">{subSc.sectionA + subSc.sectionB}</td>
-                  <td className="px-8 py-5">
-                    <div className="flex flex-col gap-2">
-                       <select 
-                         value={subjectSpecificRemarks.includes(currentRemark) ? currentRemark : ""}
-                         onChange={(e) => handleUpdateRemark(student.id, selectedSubject, e.target.value)}
-                         className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-[10px] font-bold outline-none focus:ring-2 focus:ring-blue-500/10"
-                       >
-                          <option value="">Select standard remark...</option>
-                          {subjectSpecificRemarks.map(rm => <option key={rm} value={rm}>{rm}</option>)}
-                          <option value="CUSTOM">--- TYPE CUSTOM ---</option>
-                       </select>
+                    <div className="space-y-2">
+                       <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-2">Assessment Remark</label>
                        <input 
                          type="text" 
-                         value={currentRemark}
-                         onChange={(e) => handleUpdateRemark(student.id, selectedSubject, e.target.value)}
-                         placeholder="Custom observation..."
-                         className="w-full bg-transparent border-b border-gray-200 px-1 py-1 text-[10px] italic font-medium outline-none focus:border-blue-500 transition-colors"
+                         value={mockSet.facilitatorRemarks?.[selectedSubject] || ""}
+                         onChange={(e) => {
+                            const remark = e.target.value;
+                            setStudents(prev => prev.map(s => s.id === student.id ? { ...s, mockData: { ...s.mockData, [settings.activeMock]: { ...mockSet, facilitatorRemarks: { ...mockSet.facilitatorRemarks, [selectedSubject]: remark } } } } : s));
+                         }}
+                         placeholder="SYNC REMARK..."
+                         className="w-full bg-slate-50 border border-gray-100 rounded-2xl px-6 py-3 text-[10px] font-bold uppercase italic outline-none focus:ring-2 focus:ring-blue-500/10"
                        />
                     </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                 </div>
+              </div>
+            );
+         })}
       </div>
-      <div className="flex justify-end gap-4">
-         <button onClick={onSave} className="bg-gray-100 text-gray-600 px-8 py-4 rounded-2xl font-black text-xs uppercase">Save Session</button>
-         <button onClick={handleCommitScores} className="bg-blue-900 text-white px-12 py-4 rounded-2xl font-black text-xs uppercase shadow-xl">Commit Mock Snapshot</button>
-      </div>
+
+      {/* CAPI FOOTER ACTIONS */}
+      <footer className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-5xl bg-white/80 backdrop-blur-2xl border border-gray-100 rounded-[3rem] p-6 shadow-2xl flex justify-between items-center z-[100] animate-in slide-in-from-bottom-10">
+         <div className="flex gap-10 px-8">
+            <div className="flex flex-col"><span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Matrix Shards</span><span className="text-xl font-black text-blue-950">{filtered.length} Loaded</span></div>
+            <div className="flex flex-col"><span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Entry State</span><span className="text-xl font-black text-emerald-600">Secure</span></div>
+         </div>
+         <div className="flex gap-4">
+            <button onClick={onSave} className="bg-gray-100 text-slate-600 px-10 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-all">Save Session Shard</button>
+            <button onClick={() => { if(window.confirm('Commit all subject results to history?')) onSave(); }} className="bg-blue-900 text-white px-12 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-2xl active:scale-95 transition-all hover:bg-black">Commit Series Snapshot</button>
+         </div>
+      </footer>
     </div>
   );
 };
