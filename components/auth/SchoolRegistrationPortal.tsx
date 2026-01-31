@@ -1,0 +1,134 @@
+
+import React, { useState } from 'react';
+import { GlobalSettings } from '../../types';
+import { supabase } from '../../supabaseClient';
+
+interface SchoolRegistrationPortalProps {
+  settings: GlobalSettings;
+  onBulkUpdate: (updates: Partial<GlobalSettings>) => void;
+  onSave: () => void;
+  onComplete?: (hubId: string) => void;
+  onResetStudents?: () => void;
+  onSwitchToLogin?: () => void;
+}
+
+const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({ 
+  settings, onBulkUpdate, onSave, onComplete, onResetStudents, onSwitchToLogin 
+}) => {
+  const [formData, setFormData] = useState({
+    schoolName: '',
+    location: '',
+    registrant: '', 
+    email: '',
+    contact: '' 
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [step, setStep] = useState<'FORM' | 'SUCCESS'>('FORM');
+  const [finalHubId, setFinalHubId] = useState('');
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.schoolName || !formData.registrant || !formData.email || !formData.contact) {
+        alert("Complete all particulars."); return;
+    }
+    setIsLoading(true);
+    try {
+      const hubId = `SMA-2025-${Math.floor(1000 + Math.random() * 9000)}`;
+      const targetEmail = formData.email.toLowerCase().trim();
+      const targetName = formData.registrant.toUpperCase().trim();
+      const ts = new Date().toISOString();
+
+      // 1. REGISTER IDENTITY (ANONYMOUS)
+      await supabase.from('uba_identities').upsert({
+        email: targetEmail,
+        full_name: targetName,
+        node_id: hubId,
+        hub_id: hubId,
+        role: 'school_admin'
+      });
+
+      const newSettings: GlobalSettings = {
+        ...settings,
+        schoolName: formData.schoolName.toUpperCase(),
+        schoolAddress: formData.location.toUpperCase(),
+        registrantName: targetName,
+        registrantEmail: targetEmail,
+        schoolContact: formData.contact,
+        schoolEmail: targetEmail,
+        schoolNumber: hubId,
+        accessCode: 'OPEN-HUB',
+        reportDate: new Date().toLocaleDateString()
+      };
+
+      // 2. INITIALIZE SHARDS
+      await supabase.from('uba_persistence').insert([
+        { id: `${hubId}_settings`, hub_id: hubId, payload: newSettings },
+        { id: `${hubId}_students`, hub_id: hubId, payload: [] },
+        { id: `${hubId}_facilitators`, hub_id: hubId, payload: {} },
+        { id: `registry_${hubId}`, hub_id: hubId, payload: [{ ...newSettings, status: 'active', lastActivity: ts, studentCount: 0 }] }
+      ]);
+
+      onBulkUpdate(newSettings);
+      if (onResetStudents) onResetStudents();
+      setFinalHubId(hubId);
+      setStep('SUCCESS');
+    } catch (err: any) {
+      alert("Registration Fault: " + err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (step === 'SUCCESS') {
+    return (
+      <div className="max-w-2xl mx-auto p-4 animate-in zoom-in-95 duration-700">
+         <div className="bg-slate-900 rounded-[3rem] p-12 text-center shadow-2xl border border-white/10 space-y-8">
+            <div className="w-20 h-20 bg-emerald-500 rounded-3xl flex items-center justify-center mx-auto shadow-lg">
+               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div className="space-y-2">
+               <h3 className="text-3xl font-black text-white uppercase tracking-tight">Onboarding Complete</h3>
+               <p className="text-emerald-400 font-bold text-xs uppercase tracking-widest">Institution Shard Synchronized</p>
+            </div>
+            <div className="bg-white/5 p-8 rounded-3xl border border-white/10 space-y-4">
+               <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">System Node ID (Required for Recall)</span>
+               <p className="text-3xl font-mono font-black text-blue-400 tracking-tighter">{finalHubId}</p>
+            </div>
+            <button 
+              onClick={() => onComplete?.(finalHubId)}
+              className="w-full bg-white text-slate-950 py-6 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all"
+            >
+              Enter Dashboard
+            </button>
+         </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto p-4 animate-in fade-in duration-700">
+      <div className="bg-slate-950 p-1 rounded-[3.2rem] shadow-2xl border border-white/10">
+        <div className="bg-white rounded-[3rem] p-10 md:p-14 relative overflow-hidden">
+          <div className="text-center space-y-4 mb-12">
+              <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tighter leading-none">Institutional Enrollment</h2>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">Storage Persistence Node Sync</p>
+          </div>
+
+          <form onSubmit={handleRegister} className="grid grid-cols-1 gap-6">
+            <input type="text" value={formData.schoolName} onChange={e=>setFormData({...formData, schoolName: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black uppercase outline-none" placeholder="ACADEMY NAME..." required />
+            <input type="text" value={formData.registrant} onChange={e=>setFormData({...formData, registrant: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black uppercase outline-none" placeholder="FULL LEGAL NAME..." required />
+            <input type="text" value={formData.contact} onChange={e=>setFormData({...formData, contact: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none" placeholder="CONTACT PHONE..." required />
+            <input type="text" value={formData.location} onChange={e=>setFormData({...formData, location: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none" placeholder="LOCATION..." required />
+            <input type="email" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none" placeholder="OFFICIAL EMAIL..." required />
+            <button type="submit" disabled={isLoading} className="w-full bg-blue-900 text-white py-6 rounded-3xl font-black text-xs uppercase tracking-[0.3em] disabled:opacity-50 transition-all hover:bg-black">
+              {isLoading ? "Syncing Shards..." : "Execute Enrollment"}
+            </button>
+            <button type="button" onClick={onSwitchToLogin} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline mt-2">Access Existing Hub</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default SchoolRegistrationPortal;
