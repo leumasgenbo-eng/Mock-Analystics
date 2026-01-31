@@ -134,7 +134,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
                </table>
             </div>
 
-            {/* EXTENSION: SUBJECT PERFORMANCE DISTRIBUTION - 30px (3p) Height Constraint */}
+            {/* EXTENSION: SUBJECT PERFORMANCE DISTRIBUTION - 30px Height Constraint */}
             <div className="mb-2 grid grid-cols-4 gap-2 shrink-0 h-[30px]">
                <div className="col-span-1 bg-blue-900 text-white rounded-xl flex flex-col items-center justify-center border border-blue-900 shadow-sm h-full">
                   <span className="text-[5px] font-black uppercase tracking-widest opacity-60">Pass Index</span>
@@ -152,26 +152,24 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
                </div>
             </div>
 
-            {/* EXTENSION: SPECIFIC COGNITIVE ANALYSIS - 30px (3p) Height Constraint */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1 mb-2 shrink-0 relative overflow-hidden h-[30px] flex items-center">
+            {/* EXTENSION: SPECIFIC COGNITIVE ANALYSIS - 60px (6p) Height Constraint */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 mb-2 shrink-0 relative overflow-hidden h-[60px] flex flex-col justify-center">
                <div className="absolute top-0 right-0 px-2 py-0.5 bg-slate-200 text-slate-600 text-[4px] font-black uppercase tracking-widest rounded-bl-lg">Cognitive Analysis Shard</div>
-               <div className="w-full">
-                  <p className="text-[7.5px] font-black text-blue-900 uppercase leading-none truncate">Primary cognitive strength identified in ENGLISH LANGUAGE (53.9%).</p>
-                  <p className="text-[6.5px] font-bold text-slate-500 uppercase leading-tight italic truncate">Consistent credit-level (C4) proficiency across 9 disciplines.</p>
-               </div>
+               <p className="text-[8px] font-black text-blue-900 uppercase leading-tight">Primary cognitive strength identified in ENGLISH LANGUAGE (53.9%).</p>
+               <p className="text-[7.5px] font-bold text-slate-500 uppercase leading-tight italic mt-1">The candidate maintains a consistent credit-level (C4) proficiency across 9 disciplines, indicating a stable but non-specialized output in technical and core areas outside of language arts.</p>
             </div>
 
-            {/* REMARKS & RECOMMENDATIONS - Adjusted to 30px (3p) each */}
+            {/* REMARKS & RECOMMENDATIONS - Adjusted to 60px (6p) each */}
             <div className="grid grid-cols-1 gap-1 mb-[2px] shrink-0">
-               <div className="bg-white border border-gray-200 px-2 py-1 rounded-xl relative h-[30px] overflow-hidden flex items-center">
+               <div className="bg-white border border-gray-200 px-4 py-2 rounded-xl relative h-[60px] overflow-hidden flex flex-col justify-center">
                   <div className="absolute top-0 right-0 px-2 py-0.5 bg-blue-900 text-white text-[4px] font-black uppercase tracking-widest rounded-bl-lg">Facilitator Remark Shard</div>
-                  <p className="text-[7.5px] font-black text-blue-950 uppercase leading-tight italic line-clamp-2">
+                  <p className="text-[8.5px] font-black text-blue-950 uppercase leading-snug italic">
                     THE CANDIDATE EXHIBITS A STABLE ACADEMIC PROFILE WITH SIGNIFICANT STRENGTH IN CORE LITERACY.
                   </p>
                </div>
-               <div className="bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-xl relative h-[30px] overflow-hidden flex items-center">
+               <div className="bg-indigo-50 border border-indigo-100 px-4 py-2 rounded-xl relative h-[60px] overflow-hidden flex flex-col justify-center">
                   <div className="absolute top-0 right-0 px-2 py-0.5 bg-indigo-900 text-white text-[4px] font-black uppercase tracking-widest rounded-bl-lg">Administrative Recommendation Shard</div>
-                  <p className="text-[7px] font-bold text-indigo-900 uppercase leading-tight line-clamp-2">
+                  <p className="text-[8px] font-bold text-indigo-900 uppercase leading-tight">
                      REQUIRES INTENSIVE FOCUS ON ANALYTICAL APPLICATIONS AND REMEDIAL TUTORIALS IN IDENTIFIED AREAS.
                   </p>
                </div>
