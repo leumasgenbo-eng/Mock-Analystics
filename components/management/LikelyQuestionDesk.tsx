@@ -1,17 +1,31 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { MasterQuestion, BloomsScale, StaffRewardTrade } from '../../types';
+import { MasterQuestion, BloomsScale, StaffRewardTrade, StaffAssignment } from '../../types';
 import { supabase } from '../../supabaseClient';
 
 interface LikelyQuestionDeskProps {
   activeFacilitator?: { name: string; subject: string; email?: string } | null;
   schoolName?: string;
+  subjects?: string[];
+  facilitators?: Record<string, StaffAssignment>;
+  isAdmin?: boolean;
 }
 
 const BLOOMS: BloomsScale[] = ['Knowledge', 'Understanding', 'Application', 'Analysis', 'Synthesis', 'Evaluation'];
 
-const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitator, schoolName }) => {
+const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ 
+  activeFacilitator, 
+  schoolName, 
+  subjects = [], 
+  facilitators = {}, 
+  isAdmin = false 
+}) => {
   const [questions, setQuestions] = useState<MasterQuestion[]>([]);
+  
+  // Dynamic Attribution State
+  const [targetSubject, setTargetSubject] = useState(activeFacilitator?.subject || subjects[0] || 'English Language');
+  const [targetFacilitatorName, setTargetFacilitatorName] = useState(activeFacilitator?.name || 'ADMINISTRATOR');
+
   const [formData, setFormData] = useState({
     type: 'OBJECTIVE' as 'OBJECTIVE' | 'THEORY',
     strand: '',
@@ -25,24 +39,32 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
     blooms: 'Knowledge' as BloomsScale,
     diagramUrl: ''
   });
+  
   const [isSyncing, setIsSyncing] = useState(false);
   const [showTradePopup, setShowTradePopup] = useState(false);
 
-  const subject = activeFacilitator?.subject || 'General';
+  // Sync target states if activeFacilitator changes
+  useEffect(() => {
+    if (activeFacilitator) {
+      setTargetSubject(activeFacilitator.subject);
+      setTargetFacilitatorName(activeFacilitator.name);
+    }
+  }, [activeFacilitator]);
 
   useEffect(() => {
     const fetchMySubmissions = async () => {
-       const sanitizedSubject = subject.trim().replace(/\s+/g, '');
-       const sanitizedName = activeFacilitator?.name.trim().replace(/\s+/g, '') || 'Unknown';
+       const sanitizedSubject = targetSubject.trim().replace(/\s+/g, '');
+       const sanitizedName = targetFacilitatorName.trim().replace(/\s+/g, '');
        const { data } = await supabase
          .from('uba_persistence')
          .select('payload')
          .eq('id', `likely_${sanitizedSubject}_${sanitizedName}`)
          .maybeSingle();
        if (data?.payload) setQuestions(data.payload);
+       else setQuestions([]);
     };
-    if (activeFacilitator) fetchMySubmissions();
-  }, [subject, activeFacilitator]);
+    fetchMySubmissions();
+  }, [targetSubject, targetFacilitatorName]);
 
   const untradedCount = useMemo(() => questions.filter(q => !q.isTraded).length, [questions]);
 
@@ -51,9 +73,12 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
     if (!formData.questionText.trim()) return;
 
     setIsSyncing(true);
-    const sanitizedSubject = subject.trim().replace(/\s+/g, '');
-    const sanitizedName = activeFacilitator?.name.trim().replace(/\s+/g, '') || 'Unknown';
-    const hubId = activeFacilitator?.email ? sanitizedName : 'HUB_NODE';
+    const sanitizedSubject = targetSubject.trim().replace(/\s+/g, '');
+    const sanitizedName = targetFacilitatorName.trim().replace(/\s+/g, '');
+    
+    // Determine the hub ID for attribution
+    const facilitatorRecord = Object.values(facilitators).find(f => f.name === targetFacilitatorName);
+    const hubId = facilitatorRecord?.email ? sanitizedName : 'HUB_NODE';
 
     const newQ: MasterQuestion = {
       id: `LQ-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -66,7 +91,7 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
     };
 
     try {
-      // 1. Save to Personal Shard
+      // 1. Save to Targeted Facilitator Shard
       const nextPersonalQs = [...questions, newQ];
       await supabase.from('uba_persistence').upsert({
          id: `likely_${sanitizedSubject}_${sanitizedName}`,
@@ -100,7 +125,7 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
       });
 
       if (untradedCount + 1 >= 5) setShowTradePopup(true);
-      else alert("Shard mirrored to HQ Master Bank.");
+      else alert(`Instructional shard mirrored to ${targetSubject} master bank attributed to ${targetFacilitatorName}.`);
     } catch (error) {
       console.error("Cloud Sync Error:", error);
       alert("Handshake Interrupted. Retrying internal cache...");
@@ -110,18 +135,20 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
   };
 
   const handleExecuteTrade = async () => {
-    if (!activeFacilitator) return;
     const untraded = questions.filter(q => !q.isTraded).slice(0, 5);
     const untradedIds = untraded.map(q => q.id);
-    const sanitizedSubject = subject.trim().replace(/\s+/g, '');
-    const sanitizedName = activeFacilitator.name.trim().replace(/\s+/g, '');
+    const sanitizedSubject = targetSubject.trim().replace(/\s+/g, '');
+    const sanitizedName = targetFacilitatorName.trim().replace(/\s+/g, '');
     
+    // Attempt to find email for the trade request
+    const facilitatorRecord = Object.values(facilitators).find(f => f.name === targetFacilitatorName);
+
     const tradeRequest: StaffRewardTrade = {
       id: `TR-${Date.now()}`,
-      staffName: activeFacilitator.name,
-      staffEmail: activeFacilitator.email || 'N/A',
+      staffName: targetFacilitatorName,
+      staffEmail: facilitatorRecord?.email || 'N/A',
       schoolName: schoolName || 'UNITED BAYLOR ACADEMY',
-      subject: subject,
+      subject: targetSubject,
       questionIds: untradedIds,
       submissionCount: 5,
       status: 'PENDING',
@@ -149,11 +176,16 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
 
       setQuestions(updatedQs);
       setShowTradePopup(false);
-      alert("TRADE EXECUTED: Reward shard submitted for valuation.");
+      alert(`TRADE EXECUTED: Reward shard for ${targetFacilitatorName} submitted for valuation.`);
     } catch (e) {
       alert("Trade process failed.");
     }
   };
+
+  // Derive facilitators for the current selected subject
+  const currentFacilitators = useMemo(() => {
+    return Object.values(facilitators).filter(f => f.taughtSubject === targetSubject || !f.taughtSubject);
+  }, [facilitators, targetSubject]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-6xl mx-auto pb-20">
@@ -166,7 +198,7 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
                  <h3 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Milestone Reached</h3>
                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.4em]">Credit Eligibility Verified</p>
               </div>
-              <p className="text-sm font-medium text-slate-600 leading-relaxed italic">You have contributed 5 instructional shards. Trade this pack now for HQ valuation?</p>
+              <p className="text-sm font-medium text-slate-600 leading-relaxed italic">You have contributed 5 instructional shards for {targetFacilitatorName}. Trade this pack now for HQ valuation?</p>
               <div className="flex gap-4">
                  <button onClick={() => setShowTradePopup(false)} className="flex-1 py-4 rounded-2xl font-black text-[10px] uppercase text-slate-400 hover:text-slate-900 transition-colors">Discard</button>
                  <button onClick={handleExecuteTrade} className="flex-1 bg-blue-900 text-white py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl hover:bg-black transition-all">Initiate Trade</button>
@@ -177,10 +209,10 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
 
       <div className="bg-indigo-900 text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-        <div className="relative flex justify-between items-center">
-           <div className="space-y-2">
+        <div className="relative flex flex-col md:flex-row justify-between items-center gap-6">
+           <div className="space-y-2 text-center md:text-left">
               <h3 className="text-2xl font-black uppercase tracking-tight">Likely Question Desk</h3>
-              <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-[0.4em]">Mirroring to Master Bank • {subject}</p>
+              <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-[0.4em]">Mirroring to Master Bank • Attribution: {targetFacilitatorName}</p>
            </div>
            <div className="bg-white/10 px-6 py-4 rounded-[2rem] border border-white/10 flex items-center gap-6">
               <div className="text-right">
@@ -197,7 +229,52 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
          <form onSubmit={handleSubmit} className="lg:col-span-5 bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-xl space-y-6">
-            <div className="flex justify-between items-center border-b pb-4">
+            
+            {/* Attribution Selection Section */}
+            <div className="bg-slate-50 p-6 rounded-3xl border border-gray-100 space-y-4">
+              <h4 className="text-[9px] font-black text-indigo-600 uppercase tracking-widest border-b border-indigo-100 pb-2">Instructional Attribution</h4>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-1">
+                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Target Subject</label>
+                   <select 
+                     value={targetSubject} 
+                     onChange={e => {
+                       const sub = e.target.value;
+                       setTargetSubject(sub);
+                       // If admin, auto-switch facilitator if current one doesn't match subject
+                       if (isAdmin) {
+                         const match = Object.values(facilitators).find(f => f.taughtSubject === sub);
+                         if (match) setTargetFacilitatorName(match.name);
+                         else setTargetFacilitatorName('ADMINISTRATOR');
+                       }
+                     }} 
+                     className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[10px] font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all uppercase"
+                     disabled={!isAdmin}
+                   >
+                     {subjects.map(s => <option key={s} value={s}>{s}</option>)}
+                   </select>
+                </div>
+                <div className="space-y-1">
+                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Lead Facilitator Credence</label>
+                   {isAdmin ? (
+                     <select 
+                        value={targetFacilitatorName} 
+                        onChange={e => setTargetFacilitatorName(e.target.value)} 
+                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[10px] font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all uppercase"
+                     >
+                        <option value="ADMINISTRATOR">ADMINISTRATOR (GENERAL)</option>
+                        {currentFacilitators.map(f => <option key={f.email} value={f.name}>{f.name}</option>)}
+                     </select>
+                   ) : (
+                     <div className="w-full bg-gray-200 border border-gray-300 rounded-xl px-4 py-2.5 text-[10px] font-black text-gray-600 uppercase">
+                        {targetFacilitatorName}
+                     </div>
+                   )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center">
               <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Shard Entry Matrix</h4>
               <div className="flex gap-2">
                  <button type="button" onClick={() => setFormData({...formData, type: 'OBJECTIVE', weight: 1})} className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase ${formData.type === 'OBJECTIVE' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}>Objective</button>
@@ -233,8 +310,11 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
 
          <div className="lg:col-span-7 bg-slate-50 rounded-[2.5rem] border border-gray-100 shadow-inner flex flex-col overflow-hidden">
             <div className="p-6 bg-white border-b border-gray-100 flex justify-between items-center">
-               <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">My Submission Shards</h4>
-               <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">{questions.length} Total</span>
+               <div className="space-y-1">
+                  <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Active Attribution Stream</h4>
+                  <p className="text-[9px] font-bold text-blue-600 uppercase">{targetSubject} • {targetFacilitatorName}</p>
+               </div>
+               <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">{questions.length} Shards</span>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4 max-h-[700px] no-scrollbar">
                {questions.map((q, i) => (
@@ -252,6 +332,12 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
                      <p className="text-xs font-bold text-slate-700 uppercase leading-relaxed">"{q.questionText}"</p>
                   </div>
                ))}
+               {questions.length === 0 && (
+                 <div className="h-full flex flex-col items-center justify-center py-20 opacity-20 text-center space-y-4">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <p className="font-black text-[10px] uppercase tracking-widest">No submission shards found for this attribution</p>
+                 </div>
+               )}
             </div>
          </div>
       </div>

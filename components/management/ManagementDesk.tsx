@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { StudentData, GlobalSettings, ProcessedStudent, StaffAssignment } from '../../types';
 
@@ -108,7 +109,15 @@ const ManagementDesk: React.FC<ManagementDeskProps> = ({
                onSave={onSave} 
              />
           )}
-          {activeTab === 'likelyQuestions' && <LikelyQuestionDesk activeFacilitator={activeFacilitator} />}
+          {activeTab === 'likelyQuestions' && (
+            <LikelyQuestionDesk 
+              activeFacilitator={activeFacilitator} 
+              schoolName={settings.schoolName} 
+              subjects={subjects} 
+              facilitators={facilitators} 
+              isAdmin={!isFacilitator}
+            />
+          )}
           {activeTab === 'questionsBank' && <SubjectQuestionsBank activeFacilitator={activeFacilitator} subjects={subjects} />}
           {activeTab === 'enrolmentForward' && (
             <EnrolmentForwardingPortal 
