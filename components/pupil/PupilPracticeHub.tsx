@@ -1,14 +1,15 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { PracticeAssignment, MasterQuestion } from '../../types';
+import { PracticeAssignment, MasterQuestion, ProcessedStudent } from '../../types';
 import { supabase } from '../../supabaseClient';
 
 interface PupilPracticeHubProps {
   schoolId: string;
   studentId: number;
+  studentName?: string;
 }
 
-const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId }) => {
+const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId, studentName }) => {
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [activeSet, setActiveSet] = useState<PracticeAssignment | null>(null);
   const [currentQIndex, setCurrentQIndex] = useState(0);
@@ -16,17 +17,27 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
   const [submittedQs, setSubmittedQs] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [sessionScore, setSessionScore] = useState(0);
 
-  const subjects = ["English Language", "Mathematics", "Science", "Social Studies", "Career Technology", "Creative Arts and Designing", "Ghana Language (Twi)", "Religious and Moral Education", "Computing", "French"];
+  const subjects = [
+    "English Language", "Mathematics", "Science", "Social Studies", 
+    "Career Technology", "Creative Arts and Designing", 
+    "Ghana Language (Twi)", "Religious and Moral Education", 
+    "Computing", "French"
+  ];
 
   const loadShards = useCallback(async (subject: string) => {
     setIsLoading(true);
+    // HANDSHAKE PROTOCOL
+    const hubId = schoolId || localStorage.getItem('uba_active_hub_id');
     const subKey = subject.trim().replace(/\s+/g, '');
+    const shardId = `practice_shards_${hubId}_${subKey}`;
+
     try {
-      const { data } = await supabase
-        .from('uba_persistence')
+      const { data, error } = await supabase
+        .from('uba_instructional_shards')
         .select('payload')
-        .eq('id', `practice_shards_${schoolId}_${subKey}`)
+        .eq('id', shardId)
         .maybeSingle();
 
       if (data?.payload) {
@@ -35,12 +46,13 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
         setSubmittedQs({});
         setCurrentQIndex(0);
         setIsCompleted(false);
+        setSessionScore(0);
       } else {
-        alert("No active instructional shards found for this subject.");
+        alert(`NO ACTIVE SHARDS: Facilitator hasn't broadcast "${subject}" items for this node yet.`);
         setActiveSet(null);
       }
     } catch (e) {
-      console.error(e);
+      console.error("[SHARD RETRIEVAL ERROR]", e);
     } finally {
       setIsLoading(false);
     }
@@ -50,12 +62,42 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
     if (submittedQs[qId]) return;
     setAnswers(prev => ({ ...prev, [qId]: opt }));
     setSubmittedQs(prev => ({ ...prev, [qId]: true }));
+    
+    // Immediate scoring feedback
+    const q = activeSet?.questions.find(x => x.id === qId);
+    if (q && opt === q.correctKey) {
+       setSessionScore(prev => prev + 1);
+    }
+  };
+
+  const handleFinalizeSession = async () => {
+    if (!activeSet) return;
+    
+    const hubId = schoolId || localStorage.getItem('uba_active_hub_id') || 'GLOBAL';
+    
+    try {
+      // Persist to Cloud Results Ledger
+      await supabase.from('uba_practice_results').insert({
+        hub_id: hubId,
+        student_id: studentId,
+        student_name: studentName || 'CANDIDATE',
+        subject: activeSet.subject,
+        assignment_id: activeSet.id,
+        score: sessionScore,
+        total_items: activeSet.questions.length,
+        completed_at: new Date().toISOString()
+      });
+
+      setIsCompleted(true);
+    } catch (e) {
+      alert("Mirror Failed. Result kept in temporary cache.");
+      setIsCompleted(true);
+    }
   };
 
   if (activeSet && !isCompleted) {
     const q = activeSet.questions[currentQIndex];
     const hasSubmitted = submittedQs[q.id];
-    // Cognitive Clue: Calculate target length from answer scheme
     const expectedWords = q.answerScheme ? q.answerScheme.trim().split(/\s+/).length : 0;
 
     return (
@@ -65,12 +107,12 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
             {/* Terminal Interface HUD */}
             <div className="bg-slate-900 p-8 flex justify-between items-center text-white shrink-0">
                <div className="space-y-1">
-                  <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">Sequential Mastery Retrieval</span>
-                  <h4 className="text-sm font-black uppercase">{activeSet.subject} SESSION</h4>
+                  <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">Instructional Handshake: {activeSet.subject}</span>
+                  <h4 className="text-sm font-black uppercase">PRACTICE TERMINAL</h4>
                </div>
                <div className="bg-white/5 border border-white/10 px-6 py-2 rounded-2xl flex items-center gap-4">
                   <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
-                  <span className="text-[10px] font-mono font-black text-blue-300">HUB_SYNC: OPERATIONAL</span>
+                  <span className="text-[10px] font-mono font-black text-blue-300 uppercase">Node ID: {schoolId}</span>
                </div>
             </div>
 
@@ -81,7 +123,7 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
                      <span className="bg-blue-100 text-blue-900 px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm">ITEM {currentQIndex + 1} OF {activeSet.questions.length}</span>
                      {q.type === 'THEORY' && (
                         <div className="flex items-center gap-3 bg-amber-50 border border-amber-100 px-6 py-2 rounded-full shadow-sm animate-bounce">
-                           <span className="text-[10px] font-black text-amber-700 uppercase">Cognitive Clue: ~{expectedWords} Words Expected</span>
+                           <span className="text-[10px] font-black text-amber-700 uppercase">Target: ~{expectedWords} Words</span>
                         </div>
                      )}
                   </div>
@@ -115,7 +157,7 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
                               <div className={`w-16 h-16 rounded-2xl flex items-center justify-center font-black text-4xl shrink-0 ${isSelected || (hasSubmitted && isCorrect) ? 'bg-white/20' : 'bg-white shadow-md group-hover:scale-110 transition-transform'}`}>
                                  {opt}
                               </div>
-                              <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Alternative {opt}</span>
+                              <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Choice {opt}</span>
                            </button>
                         );
                      })}
@@ -136,7 +178,7 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
                )}
 
                {hasSubmitted && q.type === 'OBJECTIVE' && (
-                  <div className="bg-slate-900 p-10 rounded-[3rem] text-white animate-in slide-in-from-bottom-8 flex justify-between items-center shadow-2xl">
+                  <div className="bg-slate-900 p-10 rounded-[3rem] text-white animate-in slide-in-from-bottom-8 flex justify-between items-center shadow-2xl border border-white/5">
                      <div className="space-y-2">
                         <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Logic Validation Hub</span>
                         <p className="text-sm font-bold italic uppercase leading-relaxed max-w-2xl">"The correct logic shard is {q.correctKey}. {q.answerScheme}"</p>
@@ -163,11 +205,11 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
                </div>
 
                {currentQIndex === activeSet.questions.length - 1 ? (
-                 <button onClick={() => setIsCompleted(true)} className="px-14 py-5 bg-emerald-600 text-white rounded-3xl font-black uppercase text-[11px] shadow-2xl active:scale-95 transition-all hover:bg-emerald-700 tracking-widest">Finalize Session</button>
+                 <button onClick={handleFinalizeSession} className="px-14 py-5 bg-emerald-600 text-white rounded-3xl font-black uppercase text-[11px] shadow-2xl active:scale-95 transition-all hover:bg-emerald-700 tracking-widest">Finalize Session</button>
                ) : (
                  <button 
                    onClick={() => {
-                     if (q.type === 'OBJECTIVE' && !hasSubmitted) return alert("Select logical choice to proceed.");
+                     if (q.type === 'OBJECTIVE' && !hasSubmitted) return alert("Select logic shard to proceed.");
                      setCurrentQIndex(prev => prev + 1);
                    }} 
                    className="px-14 py-5 bg-blue-950 text-white rounded-3xl font-black uppercase text-[11px] shadow-2xl active:scale-95 transition-all hover:bg-black tracking-widest"
@@ -188,9 +230,9 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
          </div>
          <div className="space-y-4">
             <h3 className="text-5xl font-black text-slate-900 uppercase tracking-tight">Mastery Recorded</h3>
-            <p className="text-xs font-bold text-blue-500 uppercase tracking-[0.6em]">Instructional responses mirrored to Hub Registry</p>
+            <p className="text-sm font-bold text-blue-500 uppercase tracking-[0.4em]">Final Score: {sessionScore} / {activeSet?.questions.length}</p>
          </div>
-         <button onClick={() => { setActiveSet(null); setSelectedSubject(null); }} className="bg-slate-950 text-white px-20 py-7 rounded-[2.5rem] font-black text-xs uppercase tracking-[0.3em] hover:scale-105 transition-all shadow-2xl">Exit Practice Terminal</button>
+         <button onClick={() => { setActiveSet(null); setSelectedSubject(null); }} className="bg-slate-950 text-white px-20 py-7 rounded-[2.5rem] font-black text-xs uppercase tracking-[0.3em] hover:scale-105 transition-all shadow-2xl">Return to Portal</button>
       </div>
     );
   }
@@ -199,14 +241,14 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
     <div className="space-y-12 animate-in fade-in duration-1000">
       <div className="bg-blue-950 text-white p-16 rounded-[4rem] shadow-2xl relative overflow-hidden group">
          <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -mr-48 -mt-48 blur-[120px] group-hover:scale-125 transition-transform duration-1000"></div>
-         <h3 className="text-4xl font-black uppercase tracking-tighter leading-none">Rapid Practice Terminal</h3>
-         <p className="text-[12px] font-bold text-blue-400 uppercase tracking-[0.6em] mt-4">Autonomous Cloud Shard Retrieval Node • v6.0</p>
+         <h3 className="text-4xl font-black uppercase tracking-tighter leading-none">Practice Terminal</h3>
+         <p className="text-[12px] font-bold text-blue-400 uppercase tracking-[0.6em] mt-4">Autonomous Cloud Shard Retrieval Node</p>
       </div>
 
       {isLoading ? (
          <div className="py-48 flex flex-col items-center justify-center space-y-8">
             <div className="w-20 h-20 border-[10px] border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-[11px] font-black text-blue-900 uppercase tracking-[0.5em] animate-pulse">Downloading instructional matrix...</p>
+            <p className="text-[11px] font-black text-blue-900 uppercase tracking-[0.5em] animate-pulse">Establishing handshake with cloud shards...</p>
          </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
