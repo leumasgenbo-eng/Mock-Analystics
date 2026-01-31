@@ -42,7 +42,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
     const element = document.getElementById(`capture-area-${student.id}`);
     if (!element) return setIsGenerating(false);
     const opt = { 
-      margin: 0, filename: `${student.name.replace(/\s+/g, '_')}_CAPI_REPORT.pdf`, 
+      margin: 0, filename: `${student.name.replace(/\s+/g, '_')}_REPORT.pdf`, 
       image: { type: 'jpeg', quality: 1.0 }, 
       html2canvas: { scale: 3, useCORS: true, letterRendering: true, windowWidth: 794 }, 
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } 
@@ -53,11 +53,51 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
     } catch (e) { console.error(e); } finally { setIsGenerating(false); }
   };
 
+  const handleDownloadTXT = () => {
+    let text = `${settings.schoolName}\n${settings.schoolMotto}\n${settings.schoolAddress}\n`;
+    text += `========================================\n`;
+    text += `REPORT FOR: ${student.name}\n`;
+    text += `STUDENT ID: ${student.id}\n`;
+    text += `AGGREGATE: ${student.bestSixAggregate}\n`;
+    text += `RANK: ${student.rank} OF ${totalEnrolled}\n`;
+    text += `----------------------------------------\n`;
+    text += `SUBJECT | SCORE | GRADE | REMARK\n`;
+    student.subjects.forEach(s => {
+      text += `${s.subject.padEnd(15)} | ${Math.round(s.finalCompositeScore)}% | ${s.grade} | ${s.remark}\n`;
+    });
+    text += `========================================\n`;
+    text += `CONDUCT: ${student.conductRemark || 'EXEMPLARY'}\n`;
+    text += `ADMIN REMARK: ${student.bestSixAggregate <= 15 ? "OUTSTANDING" : "REMEDIAL REQUIRED"}\n`;
+
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${student.name.replace(/\s+/g, '_')}_SUMMARY.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleWhatsAppShare = () => {
+    const msg = `*${settings.schoolName} - ASSESSMENT REPORT*\n` +
+                `Name: *${student.name}*\n` +
+                `Aggregate: *${student.bestSixAggregate}*\n` +
+                `Rank: *${student.rank} of ${totalEnrolled}*\n` +
+                `Status: ${student.category}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
   return (
     <div className="flex flex-col items-center mb-16 relative w-full px-2">
        
        <div className="fixed bottom-24 right-6 flex flex-col gap-3 no-print z-[100]">
-          <button onClick={handleDownloadPDF} disabled={isGenerating} className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-all ${isGenerating ? 'bg-gray-400' : 'bg-red-600 text-white'}`}>
+          <button title="Share WhatsApp" onClick={handleWhatsAppShare} className="w-14 h-14 rounded-full shadow-2xl flex items-center justify-center bg-green-600 text-white active:scale-90 transition-all">
+             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-7.6 8.38 8.38 0 0 1 3.8.9L21 3.5Z"/></svg>
+          </button>
+          <button title="Download TXT" onClick={handleDownloadTXT} className="w-14 h-14 rounded-full shadow-2xl flex items-center justify-center bg-blue-600 text-white active:scale-90 transition-all">
+             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </button>
+          <button title="Download PDF" onClick={handleDownloadPDF} disabled={isGenerating} className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-all ${isGenerating ? 'bg-gray-400' : 'bg-red-600 text-white'}`}>
              {isGenerating ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>}
           </button>
        </div>
@@ -65,21 +105,33 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
        <div className="overflow-x-auto w-full flex justify-center py-2 bg-gray-100/50 rounded-[2rem] shadow-inner no-scrollbar" style={{ minHeight: `calc(297mm * ${scale})` }}>
          <div id={`capture-area-${student.id}`} className="bg-white w-[210mm] h-[297mm] shadow-2xl flex flex-col p-6 box-border font-sans overflow-hidden border border-gray-100 flex-shrink-0" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}>
             
-            {/* BRANDING HEADER - Strict Institutional Node Particulars */}
+            {/* BRANDING HEADER - Fully Editable Academy Particulars */}
             <div className="shrink-0 mb-2 border-[1.5px] border-blue-900 rounded-2xl overflow-hidden bg-slate-950 text-white">
                <div className="flex flex-col items-center py-2 space-y-[1px]">
-                  <p className="text-[7px] font-black text-blue-400 tracking-[0.3em] h-3 flex items-center">INSTITUTIONAL NODE: SMA-2025-3932</p>
-                  <p className="text-[9px] font-black text-blue-300 h-3 flex items-center uppercase">S</p>
-                  <p className="text-xl font-black tracking-tighter leading-none h-5 flex items-center uppercase">SAM</p>
-                  <p className="text-[6px] font-bold text-gray-400 tracking-[0.4em] h-3 flex items-center uppercase">EXCELLENCE IN KNOWLEDGE AND CHARACTER</p>
-                  <p className="text-[9px] font-black text-blue-300 h-3 flex items-center uppercase">ADA</p>
-                  <div className="w-full border-y border-white/10 py-0.5 my-0.5">
-                     <h2 className="text-sm font-black uppercase tracking-[0.2em] text-center">OFFICIAL MOCK ASSESSMENT SERIES</h2>
+                  <p className="text-[7px] font-black text-blue-400 tracking-[0.3em] h-3 flex items-center">INSTITUTIONAL NODE: {settings.schoolNumber || "SMA-2025-3932"}</p>
+                  
+                  <div className="w-full text-center px-4">
+                     <div className="text-xl font-black tracking-tighter leading-none h-6 flex items-center justify-center uppercase">
+                        <EditableField value={settings.schoolName} onChange={(v) => onSettingChange('schoolName', v)} className="text-white text-center w-full" />
+                     </div>
+                     <div className="text-[6px] font-bold text-gray-400 tracking-[0.4em] h-3 flex items-center justify-center uppercase mt-1">
+                        <EditableField value={settings.schoolMotto || "EXCELLENCE IN KNOWLEDGE AND CHARACTER"} onChange={(v) => onSettingChange('schoolMotto', v)} className="text-gray-400 text-center w-full" />
+                     </div>
+                     <div className="text-[7px] font-black text-blue-300 h-3 flex items-center justify-center uppercase mt-0.5">
+                        <EditableField value={settings.schoolAddress || "ACCRA DIGITAL CENTRE, GHANA"} onChange={(v) => onSettingChange('schoolAddress', v)} className="text-blue-300 text-center w-full" />
+                     </div>
                   </div>
+
+                  <div className="w-full border-y border-white/10 py-0.5 my-0.5">
+                     <div className="text-sm font-black uppercase tracking-[0.2em] text-center">
+                        <EditableField value={settings.examTitle} onChange={(v) => onSettingChange('examTitle', v)} className="text-white text-center w-full" />
+                     </div>
+                  </div>
+                  
                   <div className="flex justify-center gap-x-4 text-[6px] font-black tracking-widest opacity-60">
-                     <div className="flex gap-1"><span>TEL:</span><span>0243504091</span></div>
-                     <div className="flex gap-1"><span>EMAIL:</span><span>leumasgenbo2009@gmail.com</span></div>
-                     <div className="flex gap-1"><span>WEB:</span><span>www.unitedbaylor.edu</span></div>
+                     <div className="flex gap-1"><span>TEL:</span><EditableField value={settings.schoolContact} onChange={(v) => onSettingChange('schoolContact', v)} className="text-white bg-transparent" /></div>
+                     <div className="flex gap-1"><span>EMAIL:</span><EditableField value={settings.schoolEmail} onChange={(v) => onSettingChange('schoolEmail', v)} className="text-white bg-transparent" /></div>
+                     <div className="flex gap-1"><span>WEB:</span><EditableField value={settings.schoolWebsite || "www.unitedbaylor.edu"} onChange={(v) => onSettingChange('schoolWebsite', v)} className="text-white bg-transparent" /></div>
                   </div>
                </div>
             </div>
@@ -89,15 +141,26 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
                <div className="border border-blue-900 rounded-xl overflow-hidden">
                   <div className="bg-blue-900 text-white text-[6px] font-black px-3 py-0.5 uppercase tracking-widest h-4 flex items-center">Logistics Node</div>
                   <div className="divide-y divide-gray-100">
-                     {[{l:'Series',v:'MOCK 1'},{l:'Term',v:'TERM 2'},{l:'Cycle',v:'2024/2025'},{l:'Director',v:'DIRECTOR NAME'},{l:'Hub ID',v:'SMA-2025-3932'}].map((item, i) => (
-                        <div key={i} className="flex h-4 items-center px-2 gap-2"><span className="text-[5.5px] font-black text-blue-600 uppercase w-[35px] shrink-0 border-r border-gray-50">{item.l}</span><span className="text-[7.5px] font-black text-blue-950 uppercase truncate">{item.v}</span></div>
+                     {[
+                        {l:'Series',k:'activeMock',v:settings.activeMock},
+                        {l:'Term',k:'termInfo',v:settings.termInfo},
+                        {l:'Cycle',k:'academicYear',v:settings.academicYear},
+                        {l:'Director',k:'headTeacherName',v:settings.headTeacherName},
+                        {l:'Hub ID',k:'schoolNumber',v:settings.schoolNumber}
+                     ].map((item, i) => (
+                        <div key={i} className="flex h-4 items-center px-2 gap-2">
+                           <span className="text-[5.5px] font-black text-blue-600 uppercase w-[35px] shrink-0 border-r border-gray-50">{item.l}</span>
+                           <div className="text-[7.5px] font-black text-blue-950 uppercase truncate flex-1">
+                              <EditableField value={item.v as string} onChange={(v) => onSettingChange(item.k as any, v)} className="w-full" />
+                           </div>
+                        </div>
                      ))}
                   </div>
                </div>
                <div className="border border-blue-900 rounded-xl overflow-hidden">
                   <div className="bg-blue-900 text-white text-[6px] font-black px-3 py-0.5 uppercase tracking-widest h-4 flex items-center">Attainment Shard</div>
                   <div className="divide-y divide-gray-100">
-                     {[{l:'Identity',v:student.name},{l:'Attendance',v:`${student.attendance} / 60 DAYS`},{l:'Conduct',v:'"EXEMPLARY"'},{l:'Best 6 Agg',v:student.bestSixAggregate},{l:'Rank',v:`#${student.rank} OF 26`},{l:'Level',v:'Pass'}].map((item, i) => (
+                     {[{l:'Identity',v:student.name},{l:'Attendance',v:`${student.attendance} / ${settings.attendanceTotal}`},{l:'Conduct',v:student.conductRemark || 'EXEMPLARY'},{l:'Best 6 Agg',v:student.bestSixAggregate},{l:'Rank',v:`#${student.rank} OF ${totalEnrolled}`},{l:'Level',v:student.category}].map((item, i) => (
                         <div key={i} className="flex h-4 items-center px-2 gap-2"><span className="text-[5.5px] font-black text-gray-400 uppercase w-[35px] shrink-0 border-r border-gray-50">{item.l}</span><span className={`text-[7.5px] font-black uppercase truncate ${item.l==='Best 6 Agg'?'text-red-700':'text-blue-950'}`}>{item.v}</span></div>
                      ))}
                   </div>
@@ -138,14 +201,14 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
             <div className="mb-2 grid grid-cols-4 gap-2 shrink-0 h-[30px]">
                <div className="col-span-1 bg-blue-900 text-white rounded-xl flex flex-col items-center justify-center border border-blue-900 shadow-sm h-full">
                   <span className="text-[5px] font-black uppercase tracking-widest opacity-60">Pass Index</span>
-                  <span className="text-sm font-black font-mono leading-none">100%</span>
+                  <span className="text-sm font-black font-mono leading-none">{((student.subjects.filter(s=>s.gradeValue <= 6).length / student.subjects.length)*100).toFixed(0)}%</span>
                </div>
                <div className="col-span-3 border border-gray-100 rounded-xl flex items-center justify-around bg-gray-50/30 h-full px-2">
                   {['A1','B2','B3','C4','C5','C6','D7','E8','F9'].map(g => (
                     <div key={g} className="flex flex-col items-center justify-center">
                        <span className="text-[5px] font-black text-gray-400 leading-none">{g}</span>
                        <span className={`text-[9px] font-black leading-none ${gradeDistribution[g] ? 'text-blue-900' : 'text-gray-200'}`}>
-                          {(g === 'C6' || g === 'D7' || g === 'E8' || g === 'F9') ? 0 : (gradeDistribution[g] || 0)}
+                          {gradeDistribution[g] || 0}
                        </span>
                     </div>
                   ))}
@@ -178,12 +241,18 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
             {/* SIGNATURE NODES (AUTHORIZATION) */}
             <div className="flex justify-between items-end mt-auto pb-1 border-t border-slate-100 pt-1 shrink-0">
                <div className="w-[30%] text-center border-t-[1.5px] border-slate-900 pt-1">
-                  <p className="text-[6px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Academy Director</p>
-                  <div className="font-black text-blue-950 text-[8px] uppercase truncate">DIRECTOR NAME</div>
+                  <p className="text-[6px] font-black uppercase text-slate-400 tracking-widest mb-0.5">
+                    <EditableField value={settings.adminRoleTitle || "Academy Director"} onChange={(v) => onSettingChange('adminRoleTitle', v)} />
+                  </p>
+                  <div className="font-black text-blue-950 text-[8px] uppercase truncate">
+                    <EditableField value={settings.headTeacherName} onChange={(v) => onSettingChange('headTeacherName', v)} />
+                  </div>
                </div>
                <div className="w-[30%] text-center border-t-[1.5px] border-slate-900 pt-1">
                   <p className="text-[6px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Resumption Node</p>
-                  <div className="font-black text-red-700 text-[8px] uppercase">2025-05-12</div>
+                  <div className="font-black text-red-700 text-[8px] uppercase">
+                    <EditableField value={settings.nextTermBegin} onChange={(v) => onSettingChange('nextTermBegin', v)} />
+                  </div>
                </div>
             </div>
          </div>
