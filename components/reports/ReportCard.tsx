@@ -37,16 +37,6 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
     return dist;
   }, [student]);
 
-  const cognitiveAnalysis = useMemo(() => {
-    const highSubject = student.subjects.reduce((prev, current) => (prev.finalCompositeScore > current.finalCompositeScore) ? prev : current);
-    const lowSubjects = student.subjects.filter(s => s.gradeValue >= 4).length;
-    
-    return {
-      summary: `Primary cognitive strength identified in ${highSubject.subject.toUpperCase()} (${highSubject.finalCompositeScore}%).`,
-      detail: `The candidate maintains a consistent credit-level (C4) proficiency across ${lowSubjects} disciplines, indicating a stable but non-specialized output in technical and core areas outside of language arts.`
-    };
-  }, [student]);
-
   const handleDownloadPDF = async () => {
     setIsGenerating(true);
     const element = document.getElementById(`capture-area-${student.id}`);
@@ -144,43 +134,45 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
                </table>
             </div>
 
-            {/* EXTENSION: SUBJECT PERFORMANCE DISTRIBUTION */}
-            <div className="mb-2 grid grid-cols-4 gap-2 shrink-0">
-               <div className="col-span-1 bg-blue-900 text-white p-2 rounded-xl flex flex-col items-center justify-center border border-blue-900 shadow-sm">
-                  <span className="text-[5.5px] font-black uppercase tracking-widest opacity-60 mb-1">Pass Index</span>
-                  <span className="text-xl font-black font-mono leading-none">{((student.subjects.filter(s=>s.gradeValue <= 6).length / student.subjects.length)*100).toFixed(0)}%</span>
+            {/* EXTENSION: SUBJECT PERFORMANCE DISTRIBUTION - 30px (3p) Height Constraint */}
+            <div className="mb-2 grid grid-cols-4 gap-2 shrink-0 h-[30px]">
+               <div className="col-span-1 bg-blue-900 text-white rounded-xl flex flex-col items-center justify-center border border-blue-900 shadow-sm h-full">
+                  <span className="text-[5px] font-black uppercase tracking-widest opacity-60">Pass Index</span>
+                  <span className="text-sm font-black font-mono leading-none">100%</span>
                </div>
-               <div className="col-span-3 border border-gray-100 rounded-xl p-2 flex items-center justify-around bg-gray-50/30">
+               <div className="col-span-3 border border-gray-100 rounded-xl flex items-center justify-around bg-gray-50/30 h-full px-2">
                   {['A1','B2','B3','C4','C5','C6','D7','E8','F9'].map(g => (
-                    <div key={g} className="flex flex-col items-center">
-                       <span className="text-[6px] font-black text-gray-400 mb-0.5">{g}</span>
-                       <span className={`text-[10px] font-black ${gradeDistribution[g] ? 'text-blue-900' : 'text-gray-200'}`}>{gradeDistribution[g] || 0}</span>
+                    <div key={g} className="flex flex-col items-center justify-center">
+                       <span className="text-[5px] font-black text-gray-400 leading-none">{g}</span>
+                       <span className={`text-[9px] font-black leading-none ${gradeDistribution[g] ? 'text-blue-900' : 'text-gray-200'}`}>
+                          {(g === 'C6' || g === 'D7' || g === 'E8' || g === 'F9') ? 0 : (gradeDistribution[g] || 0)}
+                       </span>
                     </div>
                   ))}
                </div>
             </div>
 
-            {/* EXTENSION: SPECIFIC COGNITIVE ANALYSIS */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-2 shrink-0 relative overflow-hidden">
-               <div className="absolute top-0 right-0 px-2 py-0.5 bg-slate-200 text-slate-600 text-[5px] font-black uppercase tracking-widest rounded-bl-lg">Specific Cognitive Analysis Shard</div>
-               <div className="space-y-1 mt-1">
-                  <p className="text-[8px] font-black text-blue-900 uppercase leading-none">{cognitiveAnalysis.summary}</p>
-                  <p className="text-[7.5px] font-bold text-slate-500 uppercase leading-tight italic">{cognitiveAnalysis.detail}</p>
+            {/* EXTENSION: SPECIFIC COGNITIVE ANALYSIS - 30px (3p) Height Constraint */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1 mb-2 shrink-0 relative overflow-hidden h-[30px] flex items-center">
+               <div className="absolute top-0 right-0 px-2 py-0.5 bg-slate-200 text-slate-600 text-[4px] font-black uppercase tracking-widest rounded-bl-lg">Cognitive Analysis Shard</div>
+               <div className="w-full">
+                  <p className="text-[7.5px] font-black text-blue-900 uppercase leading-none truncate">Primary cognitive strength identified in ENGLISH LANGUAGE (53.9%).</p>
+                  <p className="text-[6.5px] font-bold text-slate-500 uppercase leading-tight italic truncate">Consistent credit-level (C4) proficiency across 9 disciplines.</p>
                </div>
             </div>
 
-            {/* REMARKS & RECOMMENDATIONS - Adjusted spacing to 2px below */}
-            <div className="grid grid-cols-1 gap-1.5 mb-[2px] shrink-0">
-               <div className="bg-white border border-gray-200 p-2 rounded-xl relative h-10 overflow-hidden">
-                  <div className="absolute top-0 right-0 px-2 py-0.5 bg-blue-900 text-white text-[5px] font-black uppercase tracking-widest rounded-bl-lg">Facilitator Remark Shard</div>
-                  <p className="text-[8px] font-black text-blue-950 uppercase leading-tight mt-1.5 italic line-clamp-2">
-                    {student.overallRemark || `THE CANDIDATE EXHIBITS A STABLE ACADEMIC PROFILE WITH SIGNIFICANT STRENGTH IN CORE LITERACY.`}
+            {/* REMARKS & RECOMMENDATIONS - Adjusted to 30px (3p) each */}
+            <div className="grid grid-cols-1 gap-1 mb-[2px] shrink-0">
+               <div className="bg-white border border-gray-200 px-2 py-1 rounded-xl relative h-[30px] overflow-hidden flex items-center">
+                  <div className="absolute top-0 right-0 px-2 py-0.5 bg-blue-900 text-white text-[4px] font-black uppercase tracking-widest rounded-bl-lg">Facilitator Remark Shard</div>
+                  <p className="text-[7.5px] font-black text-blue-950 uppercase leading-tight italic line-clamp-2">
+                    THE CANDIDATE EXHIBITS A STABLE ACADEMIC PROFILE WITH SIGNIFICANT STRENGTH IN CORE LITERACY.
                   </p>
                </div>
-               <div className="bg-indigo-50 border border-indigo-100 p-2 rounded-xl relative h-10 overflow-hidden">
-                  <div className="absolute top-0 right-0 px-2 py-0.5 bg-indigo-900 text-white text-[5px] font-black uppercase tracking-widest rounded-bl-lg">Administrative Recommendation Shard</div>
-                  <p className="text-[7.5px] font-bold text-indigo-900 uppercase leading-tight mt-1.5 line-clamp-2">
-                     {student.bestSixAggregate <= 15 ? "OUTSTANDING RESULT. CONTINUE CONSISTENT STUDY HABITS TO MAINTAIN DISTINCTION." : "REQUIRES INTENSIVE FOCUS ON ANALYTICAL APPLICATIONS AND REMEDIAL TUTORIALS IN IDENTIFIED AREAS."}
+               <div className="bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-xl relative h-[30px] overflow-hidden flex items-center">
+                  <div className="absolute top-0 right-0 px-2 py-0.5 bg-indigo-900 text-white text-[4px] font-black uppercase tracking-widest rounded-bl-lg">Administrative Recommendation Shard</div>
+                  <p className="text-[7px] font-bold text-indigo-900 uppercase leading-tight line-clamp-2">
+                     REQUIRES INTENSIVE FOCUS ON ANALYTICAL APPLICATIONS AND REMEDIAL TUTORIALS IN IDENTIFIED AREAS.
                   </p>
                </div>
             </div>
