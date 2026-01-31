@@ -75,7 +75,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
        <div className="overflow-x-auto w-full flex justify-center py-2 bg-gray-100/50 rounded-[2rem] shadow-inner no-scrollbar" style={{ minHeight: `calc(297mm * ${scale})` }}>
          <div id={`capture-area-${student.id}`} className="bg-white w-[210mm] h-[297mm] shadow-2xl flex flex-col p-6 box-border font-sans overflow-hidden border border-gray-100 flex-shrink-0" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}>
             
-            {/* BRANDING HEADER - Width 12p/Height 4 Constraint */}
+            {/* BRANDING HEADER - Strict Institutional Node Particulars */}
             <div className="shrink-0 mb-2 border-[1.5px] border-blue-900 rounded-2xl overflow-hidden bg-slate-950 text-white">
                <div className="flex flex-col items-center py-2 space-y-[1px]">
                   <p className="text-[7px] font-black text-blue-400 tracking-[0.3em] h-3 flex items-center">INSTITUTIONAL NODE: SMA-2025-3932</p>
@@ -169,8 +169,8 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
                </div>
             </div>
 
-            {/* REMARKS & RECOMMENDATIONS */}
-            <div className="grid grid-cols-1 gap-1.5 mb-2 shrink-0">
+            {/* REMARKS & RECOMMENDATIONS - Adjusted spacing to 2px below */}
+            <div className="grid grid-cols-1 gap-1.5 mb-[2px] shrink-0">
                <div className="bg-white border border-gray-200 p-2 rounded-xl relative h-10 overflow-hidden">
                   <div className="absolute top-0 right-0 px-2 py-0.5 bg-blue-900 text-white text-[5px] font-black uppercase tracking-widest rounded-bl-lg">Facilitator Remark Shard</div>
                   <p className="text-[8px] font-black text-blue-950 uppercase leading-tight mt-1.5 italic line-clamp-2">
@@ -185,8 +185,8 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
                </div>
             </div>
 
-            {/* SIGNATURE NODES */}
-            <div className="flex justify-between items-end mt-auto pb-1 border-t border-slate-100 pt-2 shrink-0">
+            {/* SIGNATURE NODES (AUTHORIZATION) */}
+            <div className="flex justify-between items-end mt-auto pb-1 border-t border-slate-100 pt-1 shrink-0">
                <div className="w-[30%] text-center border-t-[1.5px] border-slate-900 pt-1">
                   <p className="text-[6px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Academy Director</p>
                   <div className="font-black text-blue-950 text-[8px] uppercase truncate">DIRECTOR NAME</div>
