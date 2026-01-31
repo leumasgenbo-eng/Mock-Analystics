@@ -13,6 +13,10 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
   const [isLoading, setIsLoading] = useState(false);
   const [collectedQs, setCollectedQs] = useState<{ objectives: MasterQuestion[], theory: MasterQuestion[] }>({ objectives: [], theory: [] });
 
+  // Batch Control
+  const [batchSize, setBatchSize] = useState<number>(40);
+  const [targetFolder, setTargetFolder] = useState<'objectives' | 'theory'>('objectives');
+
   // Recursive Filters
   const [filterStrand, setFilterStrand] = useState('ALL');
   const [filterSubStrand, setFilterSubStrand] = useState('ALL');
@@ -21,6 +25,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
   useEffect(() => {
     const fetchBank = async () => {
       setIsLoading(true);
+      // PULL FROM HQ MASTER SHARDS
       const bankId = `master_bank_${selectedSubject.replace(/\s+/g, '')}`;
       const { data } = await supabase.from('uba_persistence').select('payload').eq('id', bankId).maybeSingle();
       if (data?.payload) {
@@ -53,7 +58,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
     return ['ALL', ...Array.from(new Set(filtered.map(q => q.indicator || 'UNGROUPED')))];
   }, [questions, filterStrand, filterSubStrand]);
 
-  const filtered = useMemo(() => {
+  const filteredSet = useMemo(() => {
     return questions.filter(q => {
       const matchStrand = filterStrand === 'ALL' || q.strand === filterStrand;
       const matchSubStrand = filterSubStrand === 'ALL' || q.subStrand === filterSubStrand;
@@ -72,26 +77,52 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
     }
   };
 
+  const handleAutoBatchPull = () => {
+    // Pick from the filtered set based on type
+    const typeFiltered = filteredSet.filter(q => 
+      targetFolder === 'objectives' ? q.type === 'OBJECTIVE' : q.type === 'THEORY'
+    );
+
+    if (typeFiltered.length === 0) {
+      alert("HQ Search Result: No questions match the current filter criteria for this format.");
+      return;
+    }
+
+    // Shuffle and pick
+    const shuffled = [...typeFiltered].sort(() => Math.random() - 0.5);
+    const batch = shuffled.slice(0, batchSize);
+
+    setCollectedQs(prev => ({
+      ...prev,
+      [targetFolder]: Array.from(new Set([...prev[targetFolder], ...batch]))
+    }));
+
+    alert(`HQ PULL SUCCESSFUL: ${batch.length} items added to ${targetFolder.toUpperCase()} folder.`);
+  };
+
   const handleSyncAndDownload = (type: 'objectives' | 'theory') => {
     const list = collectedQs[type];
     if (list.length === 0) return alert(`The ${type.toUpperCase()} folder is empty.`);
 
-    let text = `UNITED BAYLOR ACADEMY - ${selectedSubject.toUpperCase()} WORK PACK\n`;
+    let text = `UNITED BAYLOR ACADEMY - HQ MASTER BANK PULL\n`;
+    text += `SUBJECT: ${selectedSubject.toUpperCase()}\n`;
     text += `FOLDER: ${type.toUpperCase()}\n`;
     text += `TOTAL ITEMS: ${list.length}\n`;
+    text += `PREPARED BY: ${activeFacilitator?.name || "ACADEMY FACILITATOR"}\n`;
     text += `GENERATED: ${new Date().toLocaleString()}\n`;
     text += `==============================================================\n\n`;
 
     list.forEach((q, i) => {
-      text += `ITEM ${i + 1} [${q.strand} / ${q.subStrand} / ${q.indicator}]\n`;
-      text += `QUESTION: ${q.questionText}\n`;
+      text += `ITEM ${i + 1} [STRAND: ${q.strand} | INDICATOR: ${q.indicator}]\n`;
+      text += `QUESTION:\n${q.questionText}\n`;
       if (q.instruction) text += `INSTRUCTION: ${q.instruction}\n`;
       if (q.type === 'THEORY' && q.parts && q.parts.length > 0) {
+        text += `SUB-PARTS:\n`;
         q.parts.forEach(p => {
-          text += `   (${p.partLabel}) ${p.text} [${p.weight} pts]\n`;
+          text += `   (${p.partLabel}) ${p.text} [${p.weight} pts] (Bloom's: ${p.blooms})\n`;
         });
       }
-      text += `MARKING SCHEME / KEY: ${q.correctKey || q.answerScheme || 'Review Rubric'}\n`;
+      text += `MARKING SCHEME / KEY:\n${q.correctKey || q.answerScheme || 'Review Rubric Shard'}\n`;
       text += `--------------------------------------------------------------\n\n`;
     });
 
@@ -99,10 +130,10 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${selectedSubject.replace(/\s+/g, '_')}_${type.toUpperCase()}_PACK.txt`;
+    a.download = `${selectedSubject.replace(/\s+/g, '_')}_HQ_PULL_${type.toUpperCase()}.txt`;
     a.click();
     URL.revokeObjectURL(url);
-    alert(`Pack "${type.toUpperCase()}" exported to browser downloads.`);
+    alert(`HQ Shard Exported: Use this document to prepare your examination papers.`);
   };
 
   return (
@@ -113,8 +144,8 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/10 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
         <div className="relative flex flex-col md:flex-row justify-between items-center gap-8">
            <div className="space-y-2 text-center md:text-left">
-              <h2 className="text-3xl font-black uppercase tracking-tighter">Subject Resource Matrix</h2>
-              <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Curriculum Shard Ingestion Terminal</p>
+              <h2 className="text-3xl font-black uppercase tracking-tighter">Unified HQ Questions Bank</h2>
+              <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Master Repository for Exam Preparation</p>
            </div>
            <div className="flex bg-white/5 border border-white/10 rounded-2xl p-1 backdrop-blur-xl">
               {subjects.map(s => (
@@ -134,11 +165,52 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
         
         {/* RECURSIVE FILTER PANEL */}
         <div className="lg:col-span-4 space-y-8">
+           {/* HQ BATCH COLLECTOR */}
+           <div className="bg-indigo-900 text-white border border-indigo-700 rounded-[3rem] p-10 shadow-2xl space-y-6">
+              <div className="space-y-1">
+                 <h4 className="text-[10px] font-black uppercase tracking-widest text-indigo-300">HQ Batch Collector</h4>
+                 <p className="text-xl font-black uppercase tracking-tight">Mass Pull Utility</p>
+              </div>
+              <div className="space-y-4">
+                 <div className="space-y-2">
+                    <label className="text-[8px] font-black text-indigo-300 uppercase ml-3">Pull Quantity (N)</label>
+                    <div className="grid grid-cols-4 gap-2">
+                       {[5, 10, 40, 100].map(n => (
+                         <button 
+                           key={n} 
+                           onClick={() => setBatchSize(n)}
+                           className={`py-2 rounded-xl text-[10px] font-black border transition-all ${batchSize === n ? 'bg-white text-indigo-900 border-white' : 'bg-transparent border-indigo-700 text-indigo-300 hover:border-white'}`}
+                         >
+                           {n}
+                         </button>
+                       ))}
+                    </div>
+                 </div>
+                 <div className="space-y-2">
+                    <label className="text-[8px] font-black text-indigo-300 uppercase ml-3">Target Folder</label>
+                    <select 
+                      value={targetFolder} 
+                      onChange={e => setTargetFolder(e.target.value as any)}
+                      className="w-full bg-indigo-950 border border-indigo-700 rounded-2xl px-5 py-4 text-xs font-black uppercase outline-none"
+                    >
+                       <option value="objectives">Objectives Folder</option>
+                       <option value="theory">Theory Folder</option>
+                    </select>
+                 </div>
+                 <button 
+                   onClick={handleAutoBatchPull}
+                   className="w-full bg-white text-indigo-950 py-4 rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all"
+                 >
+                   Pull {batchSize} from HQ
+                 </button>
+              </div>
+           </div>
+
            <div className="bg-white border border-gray-100 rounded-[3rem] p-10 shadow-2xl space-y-10">
               <div className="space-y-6">
                  <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-widest flex items-center gap-2">
                     <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>
-                    Matrix Filters
+                    Curriculum Matrix Filters
                  </h4>
                  <div className="space-y-5">
                     <div className="space-y-2">
@@ -154,7 +226,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
                        </select>
                     </div>
                     <div className="space-y-2">
-                       <label className="text-[8px] font-black text-slate-400 uppercase ml-3">Indicator DNA</label>
+                       <label className="text-[8px] font-black text-slate-400 uppercase ml-3">Indicator Shard</label>
                        <select value={filterIndicator} onChange={e=>setFilterIndicator(e.target.value)} className="w-full bg-slate-50 border border-gray-100 rounded-2xl px-5 py-4 text-xs font-black uppercase outline-none focus:ring-4 focus:ring-blue-500/5">
                           {indicatorList.map(s => <option key={s} value={s}>{s}</option>)}
                        </select>
@@ -163,14 +235,14 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
               </div>
 
               <div className="space-y-6 pt-6 border-t border-gray-50">
-                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Pack Folders</h4>
+                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Prepared Work Packs</h4>
                  <div className="grid grid-cols-1 gap-4">
                     <button 
                       onClick={() => handleSyncAndDownload('objectives')}
                       className="group bg-blue-900 text-white p-6 rounded-[2rem] flex justify-between items-center shadow-xl active:scale-95 transition-all"
                     >
                        <div className="text-left">
-                          <span className="text-[8px] font-black text-blue-300 uppercase block mb-1">Folder: Objectives</span>
+                          <span className="text-[8px] font-black text-blue-300 uppercase block mb-1">Objectives Pack</span>
                           <span className="text-xl font-black font-mono">{collectedQs.objectives.length}</span>
                        </div>
                        <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center group-hover:bg-white group-hover:text-blue-900 transition-colors">
@@ -182,7 +254,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
                       className="group bg-slate-900 text-white p-6 rounded-[2rem] flex justify-between items-center shadow-xl active:scale-95 transition-all"
                     >
                        <div className="text-left">
-                          <span className="text-[8px] font-black text-slate-500 uppercase block mb-1">Folder: Theory</span>
+                          <span className="text-[8px] font-black text-slate-500 uppercase block mb-1">Theory Pack</span>
                           <span className="text-xl font-black font-mono">{collectedQs.theory.length}</span>
                        </div>
                        <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center group-hover:bg-white group-hover:text-slate-900 transition-colors">
@@ -196,14 +268,31 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
 
         {/* QUESTION RESULTS MATRIX */}
         <div className="lg:col-span-8 space-y-6">
+           <div className="bg-white border border-gray-100 p-6 rounded-[2.5rem] flex justify-between items-center shadow-sm no-print">
+              <div className="flex items-center gap-4">
+                 <div className="bg-blue-50 text-blue-600 px-4 py-1.5 rounded-full text-[9px] font-black uppercase border border-blue-100">
+                    HQ Available: {questions.length}
+                 </div>
+                 <div className="bg-indigo-50 text-indigo-600 px-4 py-1.5 rounded-full text-[9px] font-black uppercase border border-indigo-100">
+                    Filtered: {filteredSet.length}
+                 </div>
+              </div>
+              <button 
+                onClick={() => setCollectedQs({ objectives: [], theory: [] })}
+                className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors"
+              >
+                Flush Folders
+              </button>
+           </div>
+
            {isLoading ? (
               <div className="h-96 flex flex-col items-center justify-center space-y-6">
                  <div className="w-14 h-14 border-[6px] border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em]">Synchronizing Master DNA Shards...</p>
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em]">Establishing HQ Cloud Link...</p>
               </div>
-           ) : filtered.length > 0 ? (
+           ) : filteredSet.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 {filtered.map((q) => {
+                 {filteredSet.map((q) => {
                     const inObj = collectedQs.objectives.some(x => x.id === q.id);
                     const inThy = collectedQs.theory.some(x => x.id === q.id);
                     return (
@@ -218,7 +307,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
                                      {q.indicator}
                                   </p>
                                </div>
-                               <span className="text-[9px] font-mono font-black text-slate-200">#HUB_DN_2025</span>
+                               <span className="text-[9px] font-mono font-black text-slate-200">#HQ_SHARD</span>
                             </div>
                             <div className="space-y-3">
                                <h4 className="text-sm font-black text-slate-900 uppercase leading-relaxed line-clamp-4 italic">"{q.questionText}"</h4>
@@ -259,7 +348,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
            ) : (
               <div className="py-40 text-center bg-slate-50 border-4 border-dashed border-gray-100 rounded-[4rem] flex flex-col items-center gap-6 opacity-30">
                  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                 <p className="text-sm font-black uppercase tracking-[0.5em] max-w-sm">No curriculum DNA found for selected parameters</p>
+                 <p className="text-sm font-black uppercase tracking-[0.5em] max-w-sm">No curriculum DNA found in HQ Pull for these parameters</p>
               </div>
            )}
         </div>

@@ -13,6 +13,12 @@ CREATE TABLE IF NOT EXISTS public.uba_identities (
 );
 
 -- Persistence Hub: JSON Shards (Open Access via Hub ID)
+-- Key Structures:
+-- 1. [HUB_ID]_settings: Global institutional config
+-- 2. [HUB_ID]_students: Array of pupil identity shards
+-- 3. [HUB_ID]_facilitators: Faculty assignment mapping
+-- 4. registry_[HUB_ID]: Discovery metadata for HQ
+-- 5. master_bank_[SUBJECT]: HQ Master Questions (Propagated globally)
 CREATE TABLE IF NOT EXISTS public.uba_persistence (
     id TEXT PRIMARY KEY,                 -- e.g., 'SMA-2025-001_settings'
     hub_id TEXT NOT NULL,
