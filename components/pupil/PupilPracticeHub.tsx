@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { PracticeAssignment, MasterQuestion, TopicMastery, StudentData } from '../../types';
+import { PracticeAssignment, MasterQuestion, StudentData } from '../../types';
 import { supabase } from '../../supabaseClient';
 
 interface PupilPracticeHubProps {
@@ -12,6 +12,7 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
   const [activeTest, setActiveTest] = useState<PracticeAssignment | null>(null);
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [submittedQs, setSubmittedQs] = useState<Record<string, boolean>>({});
   const [timeLeft, setTimeLeft] = useState(0);
   const [isCompleted, setIsCompleted] = useState(false);
   const [finalScore, setFinalScore] = useState(0);
@@ -37,9 +38,16 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
   const handleStartTest = (test: PracticeAssignment) => {
     setActiveTest(test);
     setAnswers({});
+    setSubmittedQs({});
     setCurrentQIndex(0);
     setTimeLeft(test.timeLimit * 60);
     setIsCompleted(false);
+  };
+
+  const handleSelectObjective = (qId: string, option: string) => {
+    if (submittedQs[qId]) return; // Prevent double submission
+    setAnswers(prev => ({ ...prev, [qId]: option }));
+    setSubmittedQs(prev => ({ ...prev, [qId]: true }));
   };
 
   const calculateScore = (test: PracticeAssignment, pupilAnswers: Record<string, string>) => {
@@ -66,7 +74,7 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
         if (mWords.size > 0) {
           const intersect = new Set([...pWords].filter(w => mWords.has(w)));
           const matchRate = intersect.size / mWords.size;
-          if (matchRate >= 0.95) qEarned = q.weight;
+          if (matchRate >= 0.9) qEarned = q.weight;
           else if (matchRate >= 0.5) qEarned = q.weight * 0.5;
         }
       }
@@ -83,7 +91,6 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
     setFinalScore(percentage);
     setIsCompleted(true);
 
-    // Update Student Mastery Map
     const { data: stData } = await supabase.from('uba_persistence').select('payload').eq('id', `${schoolId}_students`).maybeSingle();
     if (stData?.payload) {
       const students: StudentData[] = stData.payload;
@@ -98,11 +105,8 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
             currentMap[mIdx].averageScore = (currentMap[mIdx].averageScore + score) / 2;
           } else {
             currentMap.push({
-              strand: data.strand,
-              subStrand: data.subStrand,
-              indicator,
-              averageScore: score,
-              attempts: 1,
+              strand: data.strand, subStrand: data.subStrand, indicator,
+              averageScore: score, attempts: 1,
               status: score >= 75 ? 'MASTERED' : score >= 50 ? 'DEVELOPING' : 'CRITICAL'
             });
           }
@@ -128,10 +132,10 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
            {finalScore}%
          </div>
          <div className="space-y-2">
-            <h3 className="text-3xl font-black text-slate-900 uppercase">Assessment Complete</h3>
-            <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Mastery Shard Updated in Live Registry</p>
+            <h3 className="text-3xl font-black text-slate-900 uppercase">Evaluation Synchronized</h3>
+            <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Shard Recorded in Institutional Ledger</p>
          </div>
-         <button onClick={() => setActiveTest(null)} className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase">Back to Hub</button>
+         <button onClick={() => setActiveTest(null)} className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase">Return to Hub</button>
       </div>
     );
   }
@@ -140,54 +144,134 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
     const q = activeTest.questions[currentQIndex];
     const mins = Math.floor(timeLeft / 60);
     const secs = timeLeft % 60;
+    const hasSubmitted = submittedQs[q.id];
+    
+    // Calculate expected words for theory
+    const expectedWords = q.type === 'THEORY' ? (q.answerScheme || "").split(/\s+/).filter(w => w.length > 2).length : 0;
 
     return (
-      <div className="p-10 bg-white rounded-[3.5rem] shadow-2xl border border-gray-100 space-y-10 animate-in slide-in-from-right-10">
-         <div className="flex justify-between items-center bg-slate-950 p-6 rounded-[2rem] text-white">
-            <div className="space-y-1">
-               <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">Active Practice</span>
-               <h4 className="text-sm font-black uppercase">{activeTest.title}</h4>
-            </div>
-            <div className="text-right">
-               <span className="text-[8px] font-black text-slate-500 uppercase block">Time Remaining</span>
-               <span className={`text-2xl font-mono font-black ${timeLeft < 60 ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
-                 {mins.toString().padStart(2, '0')}:{secs.toString().padStart(2, '0')}
-               </span>
-            </div>
-         </div>
-
-         <div className="space-y-8">
-            <div className="flex justify-between items-end">
-               <span className="bg-blue-100 text-blue-700 px-4 py-1.5 rounded-full text-[9px] font-black uppercase">Shard {currentQIndex + 1} OF {activeTest.questions.length}</span>
-               <div className="text-right">
-                  <span className="text-[8px] font-black text-slate-400 uppercase block">Focus Area</span>
-                  <span className="text-[10px] font-black text-blue-900 uppercase">{q.strand} → {q.indicator}</span>
+      <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-xl z-[300] flex items-center justify-center p-4 md:p-10 font-sans">
+         <div className="w-full max-w-4xl bg-white rounded-[3.5rem] shadow-2xl overflow-hidden flex flex-col max-h-full animate-in zoom-in-95">
+            
+            {/* HUD */}
+            <div className="bg-slate-900 p-8 flex justify-between items-center text-white shrink-0">
+               <div className="space-y-1">
+                  <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">{activeTest.subject} SHARD</span>
+                  <h4 className="text-sm font-black uppercase truncate max-w-[200px] md:max-w-md">{activeTest.title}</h4>
+               </div>
+               <div className="flex items-center gap-8">
+                  <div className="text-right hidden md:block">
+                     <span className="text-[8px] font-black text-slate-500 uppercase block">Cognitive Node</span>
+                     <span className="text-xs font-mono font-bold text-indigo-300">{q.indicator}</span>
+                  </div>
+                  <div className="text-right">
+                     <span className="text-[8px] font-black text-slate-500 uppercase block">Time Remaining</span>
+                     <span className={`text-2xl font-mono font-black ${timeLeft < 60 ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
+                       {mins.toString().padStart(2, '0')}:{secs.toString().padStart(2, '0')}
+                     </span>
+                  </div>
                </div>
             </div>
-            <div className="p-10 bg-slate-50 rounded-[2.5rem] border border-gray-100">
-               <p className="text-lg font-black text-slate-800 uppercase leading-relaxed">"{q.questionText}"</p>
-            </div>
-            
-            <textarea 
-               value={answers[q.id] || ""}
-               onChange={e => setAnswers({...answers, [q.id]: e.target.value})}
-               placeholder="Enter your response shard..."
-               className="w-full bg-white border-2 border-gray-100 rounded-[2rem] p-8 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 min-h-[200px] shadow-inner uppercase"
-            />
-         </div>
 
-         <div className="flex gap-4 pt-6">
-            <button 
-              disabled={currentQIndex === 0}
-              onClick={() => setCurrentQIndex(prev => prev - 1)}
-              className="flex-1 py-4 bg-slate-100 text-slate-400 rounded-2xl font-black uppercase text-[10px]"
-            >Prev Shard</button>
-            
-            {currentQIndex === activeTest.questions.length - 1 ? (
-              <button onClick={handleCompleteTest} className="flex-[2] bg-emerald-600 text-white py-4 rounded-2xl font-black uppercase text-[10px] shadow-lg">Finalize Evaluation</button>
-            ) : (
-              <button onClick={() => setCurrentQIndex(prev => prev + 1)} className="flex-[2] bg-blue-900 text-white py-4 rounded-2xl font-black uppercase text-[10px] shadow-lg">Next Shard</button>
-            )}
+            {/* Question Workspace */}
+            <div className="flex-1 overflow-y-auto p-8 md:p-14 space-y-10 custom-scrollbar">
+               <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                     <span className="bg-blue-100 text-blue-800 px-4 py-1 rounded-full text-[9px] font-black uppercase">Item {currentQIndex + 1} of {activeTest.questions.length}</span>
+                     {q.type === 'THEORY' && (
+                        <div className="flex items-center gap-2 bg-amber-50 border border-amber-100 px-4 py-1 rounded-full">
+                           <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></div>
+                           <span className="text-[9px] font-black text-amber-700 uppercase">Clue: Expected Response ~{expectedWords} words</span>
+                        </div>
+                     )}
+                  </div>
+                  <h3 className="text-xl md:text-2xl font-black text-slate-900 uppercase leading-relaxed">
+                     "{q.questionText}"
+                  </h3>
+               </div>
+
+               {q.type === 'OBJECTIVE' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     {['A', 'B', 'C', 'D', 'E'].map((opt) => {
+                        const isCorrect = opt.toLowerCase() === (q.correctKey || "").toLowerCase();
+                        const isSelected = answers[q.id] === opt;
+                        
+                        let btnClass = "bg-slate-50 border-gray-100 text-slate-700 hover:border-blue-400";
+                        if (hasSubmitted) {
+                           if (isCorrect) btnClass = "bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/20";
+                           else if (isSelected) btnClass = "bg-red-500 border-red-500 text-white shadow-lg shadow-red-500/20";
+                           else btnClass = "bg-slate-50 border-gray-100 text-slate-300 grayscale opacity-40";
+                        } else if (isSelected) {
+                           btnClass = "bg-blue-900 border-blue-900 text-white shadow-xl";
+                        }
+
+                        return (
+                           <button 
+                             key={opt}
+                             disabled={hasSubmitted}
+                             onClick={() => handleSelectObjective(q.id, opt)}
+                             className={`p-6 rounded-[2rem] border-2 transition-all flex items-center gap-6 text-left group ${btnClass}`}
+                           >
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg shrink-0 ${isSelected || (hasSubmitted && isCorrect) ? 'bg-white/20' : 'bg-white shadow-sm'}`}>
+                                 {opt}
+                              </div>
+                              <span className="text-xs font-black uppercase tracking-tight">Option Participant {opt} Instance</span>
+                           </button>
+                        );
+                     })}
+                  </div>
+               ) : (
+                  <div className="space-y-6">
+                     <textarea 
+                        value={answers[q.id] || ""}
+                        onChange={e => setAnswers({...answers, [q.id]: e.target.value})}
+                        placeholder="Construct your theoretical response shard..."
+                        className="w-full bg-slate-50 border-2 border-gray-100 rounded-[2.5rem] p-8 md:p-10 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 min-h-[250px] shadow-inner uppercase"
+                     />
+                  </div>
+               )}
+
+               {hasSubmitted && q.type === 'OBJECTIVE' && (
+                  <div className="bg-slate-900 p-8 rounded-[2rem] text-white animate-in slide-in-from-bottom-4">
+                     <div className="flex justify-between items-center mb-2">
+                        <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">Master Proctor Validation</span>
+                        <span className={`text-[10px] font-black uppercase ${answers[q.id] === q.correctKey ? 'text-emerald-400' : 'text-red-400'}`}>
+                           {answers[q.id] === q.correctKey ? 'Precision Verified' : 'Logic Discrepancy'}
+                        </span>
+                     </div>
+                     <p className="text-xs font-bold text-slate-300 italic uppercase">"The correct logical shard for this instance is alternative {q.correctKey}. {q.answerScheme}"</p>
+                  </div>
+               )}
+            </div>
+
+            {/* Footer Navigation */}
+            <div className="p-8 bg-gray-50 border-t border-gray-100 flex gap-4 shrink-0">
+               <button 
+                 disabled={currentQIndex === 0}
+                 onClick={() => setCurrentQIndex(prev => prev - 1)}
+                 className="px-8 py-4 bg-white border border-gray-200 text-slate-400 rounded-2xl font-black uppercase text-[10px] hover:bg-slate-50 disabled:opacity-0 transition-all"
+               >Back</button>
+               
+               <div className="flex-1 flex justify-center items-center">
+                  <div className="flex gap-1.5">
+                     {activeTest.questions.map((_, idx) => (
+                        <div key={idx} className={`h-1.5 rounded-full transition-all duration-500 ${idx === currentQIndex ? 'w-8 bg-blue-600' : 'w-1.5 bg-gray-300'}`}></div>
+                     ))}
+                  </div>
+               </div>
+
+               {currentQIndex === activeTest.questions.length - 1 ? (
+                 <button onClick={handleCompleteTest} className="px-10 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg active:scale-95 transition-all">Submit Session</button>
+               ) : (
+                 <button 
+                   onClick={() => {
+                      if (q.type === 'OBJECTIVE' && !hasSubmitted) return alert("Verify alternative before proceeding.");
+                      setCurrentQIndex(prev => prev + 1);
+                   }} 
+                   className="px-10 py-4 bg-blue-900 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg active:scale-95 transition-all"
+                 >Continue Shard</button>
+               )}
+            </div>
          </div>
       </div>
     );
@@ -197,8 +281,8 @@ const PupilPracticeHub: React.FC<PupilPracticeHubProps> = ({ schoolId, studentId
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="bg-slate-900 text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden">
          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-         <h3 className="text-2xl font-black uppercase tracking-tight">Practice Hub</h3>
-         <p className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.4em] mt-1">Autonomous Cohort Evaluation Module</p>
+         <h3 className="text-2xl font-black uppercase tracking-tight">Rapid Practice Hub</h3>
+         <p className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.4em] mt-1">Autonomous Cohort Cognitive Evaluation</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

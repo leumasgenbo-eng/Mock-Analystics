@@ -1,6 +1,8 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { ProcessedStudent, GlobalSettings, ClassStatistics } from '../../types';
 import EditableField from '../shared/EditableField';
+import ReportBrandingHeader from '../shared/ReportBrandingHeader';
 
 interface ReportCardProps {
   student: ProcessedStudent;
@@ -53,31 +55,6 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
     } catch (e) { console.error(e); } finally { setIsGenerating(false); }
   };
 
-  const handleDownloadTXT = () => {
-    let text = `${settings.schoolName}\n${settings.schoolMotto}\n${settings.schoolAddress}\n`;
-    text += `========================================\n`;
-    text += `REPORT FOR: ${student.name}\n`;
-    text += `STUDENT ID: ${student.id}\n`;
-    text += `AGGREGATE: ${student.bestSixAggregate}\n`;
-    text += `RANK: ${student.rank} OF ${totalEnrolled}\n`;
-    text += `----------------------------------------\n`;
-    text += `SUBJECT | SCORE | GRADE | REMARK\n`;
-    student.subjects.forEach(s => {
-      text += `${s.subject.padEnd(15)} | ${Math.round(s.finalCompositeScore)}% | ${s.grade} | ${s.remark}\n`;
-    });
-    text += `========================================\n`;
-    text += `CONDUCT: ${student.conductRemark || 'EXEMPLARY'}\n`;
-    text += `ADMIN REMARK: ${student.bestSixAggregate <= 15 ? "OUTSTANDING" : "REMEDIAL REQUIRED"}\n`;
-
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${student.name.replace(/\s+/g, '_')}_SUMMARY.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const handleWhatsAppShare = () => {
     const msg = `*${settings.schoolName} - ASSESSMENT REPORT*\n` +
                 `Name: *${student.name}*\n` +
@@ -94,9 +71,6 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
           <button title="Share WhatsApp" onClick={handleWhatsAppShare} className="w-14 h-14 rounded-full shadow-2xl flex items-center justify-center bg-green-600 text-white active:scale-90 transition-all">
              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-7.6 8.38 8.38 0 0 1 3.8.9L21 3.5Z"/></svg>
           </button>
-          <button title="Download TXT" onClick={handleDownloadTXT} className="w-14 h-14 rounded-full shadow-2xl flex items-center justify-center bg-blue-600 text-white active:scale-90 transition-all">
-             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-          </button>
           <button title="Download PDF" onClick={handleDownloadPDF} disabled={isGenerating} className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-all ${isGenerating ? 'bg-gray-400' : 'bg-red-600 text-white'}`}>
              {isGenerating ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>}
           </button>
@@ -105,109 +79,97 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
        <div className="overflow-x-auto w-full flex justify-center py-2 bg-gray-100/50 rounded-[2rem] shadow-inner no-scrollbar" style={{ minHeight: `calc(297mm * ${scale})` }}>
          <div id={`capture-area-${student.id}`} className="bg-white w-[210mm] h-[297mm] shadow-2xl flex flex-col p-6 box-border font-sans overflow-hidden border border-gray-100 flex-shrink-0" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}>
             
-            {/* BRANDING HEADER - Fully Editable Academy Particulars */}
-            <div className="shrink-0 mb-2 border-[1.5px] border-blue-900 rounded-2xl overflow-hidden bg-slate-950 text-white">
-               <div className="flex flex-col items-center py-2 space-y-[1px]">
-                  <p className="text-[7px] font-black text-blue-400 tracking-[0.3em] h-3 flex items-center">INSTITUTIONAL NODE: {settings.schoolNumber || "SMA-2025-3932"}</p>
-                  
-                  <div className="w-full text-center px-4">
-                     <div className="text-xl font-black tracking-tighter leading-none h-6 flex items-center justify-center uppercase">
-                        <EditableField value={settings.schoolName} onChange={(v) => onSettingChange('schoolName', v)} className="text-white text-center w-full" />
-                     </div>
-                     <div className="text-[6px] font-bold text-gray-400 tracking-[0.4em] h-3 flex items-center justify-center uppercase mt-1">
-                        <EditableField value={settings.schoolMotto || "EXCELLENCE IN KNOWLEDGE AND CHARACTER"} onChange={(v) => onSettingChange('schoolMotto', v)} className="text-gray-400 text-center w-full" />
-                     </div>
-                     <div className="text-[7px] font-black text-blue-300 h-3 flex items-center justify-center uppercase mt-0.5">
-                        <EditableField value={settings.schoolAddress || "ACCRA DIGITAL CENTRE, GHANA"} onChange={(v) => onSettingChange('schoolAddress', v)} className="text-blue-300 text-center w-full" />
-                     </div>
-                  </div>
-
-                  <div className="w-full border-y border-white/10 py-0.5 my-0.5">
-                     <div className="text-sm font-black uppercase tracking-[0.2em] text-center">
-                        <EditableField value={settings.examTitle} onChange={(v) => onSettingChange('examTitle', v)} className="text-white text-center w-full" />
-                     </div>
-                  </div>
-                  
-                  <div className="flex justify-center gap-x-4 text-[6px] font-black tracking-widest opacity-60">
-                     <div className="flex gap-1"><span>TEL:</span><EditableField value={settings.schoolContact} onChange={(v) => onSettingChange('schoolContact', v)} className="text-white bg-transparent" /></div>
-                     <div className="flex gap-1"><span>EMAIL:</span><EditableField value={settings.schoolEmail} onChange={(v) => onSettingChange('schoolEmail', v)} className="text-white bg-transparent" /></div>
-                     <div className="flex gap-1"><span>WEB:</span><EditableField value={settings.schoolWebsite || "www.unitedbaylor.edu"} onChange={(v) => onSettingChange('schoolWebsite', v)} className="text-white bg-transparent" /></div>
-                  </div>
-               </div>
+            {/* BRANDING HEADER - Unified & Editable */}
+            <div className="shrink-0 mb-4">
+               <ReportBrandingHeader 
+                  settings={settings} 
+                  onSettingChange={onSettingChange} 
+                  reportTitle={settings.examTitle}
+                  subtitle="OFFICIAL ACADEMIC ATTAINMENT RECORD"
+                  isLandscape={false}
+               />
             </div>
 
-            {/* DUAL LEDGER MATRIX */}
-            <div className="grid grid-cols-2 gap-3 mb-2 shrink-0">
-               <div className="border border-blue-900 rounded-xl overflow-hidden">
-                  <div className="bg-blue-900 text-white text-[6px] font-black px-3 py-0.5 uppercase tracking-widest h-4 flex items-center">Logistics Node</div>
+            {/* PUPIL & LOGISTICS MATRIX */}
+            <div className="grid grid-cols-2 gap-3 mb-3 shrink-0">
+               <div className="border border-blue-900 rounded-xl overflow-hidden bg-slate-50/30">
+                  <div className="bg-blue-950 text-white text-[7px] font-black px-3 py-1 uppercase tracking-widest flex items-center justify-between">
+                     <span>Logistics Node</span>
+                     <span className="opacity-50 font-mono">NODE-0{student.id % 9}</span>
+                  </div>
                   <div className="divide-y divide-gray-100">
                      {[
-                        {l:'Series',k:'activeMock',v:settings.activeMock},
-                        {l:'Term',k:'termInfo',v:settings.termInfo},
-                        {l:'Cycle',k:'academicYear',v:settings.academicYear},
-                        {l:'Director',k:'headTeacherName',v:settings.headTeacherName},
-                        {l:'Hub ID',k:'schoolNumber',v:settings.schoolNumber}
+                        {l:'Series Cycle',k:'activeMock',v:settings.activeMock},
+                        {l:'Current Term',k:'termInfo',v:settings.termInfo},
+                        {l:'Academic Yr',k:'academicYear',v:settings.academicYear},
+                        {l:'Authority',k:'headTeacherName',v:settings.headTeacherName},
                      ].map((item, i) => (
-                        <div key={i} className="flex h-4 items-center px-2 gap-2">
-                           <span className="text-[5.5px] font-black text-blue-600 uppercase w-[35px] shrink-0 border-r border-gray-50">{item.l}</span>
-                           <div className="text-[7.5px] font-black text-blue-950 uppercase truncate flex-1">
+                        <div key={i} className="flex h-5 items-center px-3 gap-2">
+                           <span className="text-[6px] font-black text-blue-600 uppercase w-[45px] shrink-0 border-r border-gray-100">{item.l}</span>
+                           <div className="text-[8px] font-black text-blue-950 uppercase truncate flex-1">
                               <EditableField value={item.v as string} onChange={(v) => onSettingChange(item.k as any, v)} className="w-full" />
                            </div>
                         </div>
                      ))}
                   </div>
                </div>
-               <div className="border border-blue-900 rounded-xl overflow-hidden">
-                  <div className="bg-blue-900 text-white text-[6px] font-black px-3 py-0.5 uppercase tracking-widest h-4 flex items-center">Attainment Shard</div>
+               <div className="border border-blue-900 rounded-xl overflow-hidden bg-blue-50/10">
+                  <div className="bg-blue-950 text-white text-[7px] font-black px-3 py-1 uppercase tracking-widest flex items-center justify-between">
+                     <span>Candidate Particulars</span>
+                     <span className="opacity-50">VERIFIED</span>
+                  </div>
                   <div className="divide-y divide-gray-100">
-                     {[{l:'Identity',v:student.name},{l:'Attendance',v:`${student.attendance} / ${settings.attendanceTotal}`},{l:'Conduct',v:student.conductRemark || 'EXEMPLARY'},{l:'Best 6 Agg',v:student.bestSixAggregate},{l:'Rank',v:`#${student.rank} OF ${totalEnrolled}`},{l:'Level',v:student.category}].map((item, i) => (
-                        <div key={i} className="flex h-4 items-center px-2 gap-2"><span className="text-[5.5px] font-black text-gray-400 uppercase w-[35px] shrink-0 border-r border-gray-50">{item.l}</span><span className={`text-[7.5px] font-black uppercase truncate ${item.l==='Best 6 Agg'?'text-red-700':'text-blue-950'}`}>{item.v}</span></div>
+                     {[{l:'Full Name',v:student.name},{l:'Attendance',v:`${student.attendance} / ${settings.attendanceTotal}`},{l:'Mock Rank',v:`#${student.rank} OF ${totalEnrolled}`},{l:'Best 6 Agg',v:student.bestSixAggregate}].map((item, i) => (
+                        <div key={i} className="flex h-5 items-center px-3 gap-2">
+                           <span className="text-[6px] font-black text-gray-400 uppercase w-[45px] shrink-0 border-r border-gray-100">{item.l}</span>
+                           <span className={`text-[8px] font-black uppercase truncate ${item.l==='Best 6 Agg'?'text-red-700':'text-blue-950'}`}>{item.v}</span>
+                        </div>
                      ))}
                   </div>
                </div>
             </div>
 
             {/* RESULTS MATRIX */}
-            <div className="mb-2 shrink-0">
+            <div className="mb-3 shrink-0">
                <table className="w-full text-[10px] border-collapse border-[1.5px] border-blue-900 rounded-xl overflow-hidden">
-                  <thead className="bg-blue-950 text-white uppercase text-[5.5px] font-black tracking-widest">
-                    <tr className="h-4">
-                      <th className="px-3 text-left">Academic Discipline</th>
-                      <th className="px-0.5 text-center w-[12px]">Obj</th>
-                      <th className="px-0.5 text-center w-[12px]">Thy</th>
-                      <th className="px-0.5 text-center w-[12px]">SBA</th>
-                      <th className="px-0.5 text-center w-[16px] bg-blue-800">Total</th>
-                      <th className="px-0.5 text-center w-[16px]">Grd</th>
-                      <th className="px-3 text-left">Teacher Remark Shard</th>
+                  <thead className="bg-blue-950 text-white uppercase text-[6px] font-black tracking-widest">
+                    <tr className="h-5">
+                      <th className="px-4 text-left">Academic Discipline</th>
+                      <th className="px-1 text-center w-[20px]">Obj</th>
+                      <th className="px-1 text-center w-[20px]">Thy</th>
+                      <th className="px-1 text-center w-[20px]">SBA</th>
+                      <th className="px-1 text-center w-[25px] bg-blue-800">Total</th>
+                      <th className="px-1 text-center w-[25px]">Grd</th>
+                      <th className="px-4 text-left">Instructional Remark Shard</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                      {student.subjects.map(sub => (
-                       <tr key={sub.subject} className="even:bg-blue-50/10 font-bold h-[15px]">
-                         <td className="px-3 py-[1px] text-blue-950 uppercase truncate max-w-[140px] text-[7.5px] border-r border-gray-50">{sub.subject}</td>
-                         <td className="py-[1px] px-0.5 text-center font-mono text-gray-400 text-[8px] w-[12px] border-r border-gray-50">{sub.sectionA ?? '—'}</td>
-                         <td className="py-[1px] px-0.5 text-center font-mono text-gray-400 text-[8px] w-[12px] border-r border-gray-50">{sub.sectionB ?? '—'}</td>
-                         <td className="py-[1px] px-0.5 text-center font-mono text-gray-400 text-[8px] w-[12px] border-r border-gray-50">{Math.round(sub.sbaScore)}</td>
-                         <td className="py-[1px] px-0.5 text-center font-black bg-blue-50/50 text-blue-900 text-[8px] w-[16px] border-r border-gray-100">{Math.round(sub.finalCompositeScore)}</td>
-                         <td className={`py-[1px] px-0.5 text-center font-black text-[8px] w-[16px] border-r border-gray-100 ${sub.gradeValue >= 7 ? 'text-red-700' : 'text-blue-950'}`}>{sub.grade}</td>
-                         <td className="px-3 py-[1px] text-[6.5px] uppercase text-slate-500 italic truncate max-w-[180px] font-medium leading-none">{sub.remark}</td>
+                       <tr key={sub.subject} className="even:bg-blue-50/5 font-bold h-[18px]">
+                         <td className="px-4 py-[1px] text-blue-950 uppercase truncate max-w-[150px] text-[8.5px] border-r border-gray-50">{sub.subject}</td>
+                         <td className="py-[1px] px-1 text-center font-mono text-gray-400 text-[9px] border-r border-gray-50">{sub.sectionA ?? '—'}</td>
+                         <td className="py-[1px] px-1 text-center font-mono text-gray-400 text-[9px] border-r border-gray-50">{sub.sectionB ?? '—'}</td>
+                         <td className="py-[1px] px-1 text-center font-mono text-gray-400 text-[9px] border-r border-gray-50">{Math.round(sub.sbaScore)}</td>
+                         <td className="py-[1px] px-1 text-center font-black bg-blue-50/30 text-blue-900 text-[9px] border-r border-gray-100">{Math.round(sub.finalCompositeScore)}</td>
+                         <td className={`py-[1px] px-1 text-center font-black text-[9.5px] border-r border-gray-100 ${sub.gradeValue >= 7 ? 'text-red-700' : 'text-blue-900'}`}>{sub.grade}</td>
+                         <td className="px-4 py-[1px] text-[7.5px] uppercase text-slate-500 italic truncate max-w-[200px] font-medium leading-none">{sub.remark}</td>
                        </tr>
                      ))}
                   </tbody>
                </table>
             </div>
 
-            {/* EXTENSION: SUBJECT PERFORMANCE DISTRIBUTION - 30px Height Constraint */}
-            <div className="mb-2 grid grid-cols-4 gap-2 shrink-0 h-[30px]">
-               <div className="col-span-1 bg-blue-900 text-white rounded-xl flex flex-col items-center justify-center border border-blue-900 shadow-sm h-full">
-                  <span className="text-[5px] font-black uppercase tracking-widest opacity-60">Pass Index</span>
-                  <span className="text-sm font-black font-mono leading-none">{((student.subjects.filter(s=>s.gradeValue <= 6).length / student.subjects.length)*100).toFixed(0)}%</span>
+            {/* PERFORMANCE ANALYSIS HEATMAP */}
+            <div className="mb-3 grid grid-cols-4 gap-2 shrink-0 h-[40px]">
+               <div className="col-span-1 bg-blue-950 text-white rounded-2xl flex flex-col items-center justify-center border border-blue-900 shadow-lg h-full">
+                  <span className="text-[6px] font-black uppercase tracking-widest opacity-60">Overall Efficiency</span>
+                  <span className="text-lg font-black font-mono leading-none">{((student.subjects.filter(s=>s.gradeValue <= 6).length / student.subjects.length)*100).toFixed(0)}%</span>
                </div>
-               <div className="col-span-3 border border-gray-100 rounded-xl flex items-center justify-around bg-gray-50/30 h-full px-2">
+               <div className="col-span-3 border border-gray-200 rounded-2xl flex items-center justify-around bg-slate-50/50 h-full px-4">
                   {['A1','B2','B3','C4','C5','C6','D7','E8','F9'].map(g => (
                     <div key={g} className="flex flex-col items-center justify-center">
-                       <span className="text-[5px] font-black text-gray-400 leading-none">{g}</span>
-                       <span className={`text-[9px] font-black leading-none ${gradeDistribution[g] ? 'text-blue-900' : 'text-gray-200'}`}>
+                       <span className="text-[6px] font-black text-slate-400 leading-none mb-1">{g}</span>
+                       <span className={`text-[11px] font-black leading-none ${gradeDistribution[g] ? 'text-blue-900' : 'text-slate-200'}`}>
                           {gradeDistribution[g] || 0}
                        </span>
                     </div>
@@ -215,42 +177,35 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
                </div>
             </div>
 
-            {/* EXTENSION: SPECIFIC COGNITIVE ANALYSIS - 60px (6p) Height Constraint */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 mb-2 shrink-0 relative overflow-hidden h-[60px] flex flex-col justify-center">
-               <div className="absolute top-0 right-0 px-2 py-0.5 bg-slate-200 text-slate-600 text-[4px] font-black uppercase tracking-widest rounded-bl-lg">Specific Cognitive Analysis Shard</div>
-               <p className="text-[8px] font-black text-blue-900 uppercase leading-tight">Primary cognitive strength identified in ENGLISH LANGUAGE (53.9%).</p>
-               <p className="text-[7.5px] font-bold text-slate-500 uppercase leading-tight italic mt-1">The candidate maintains a consistent credit-level (C4) proficiency across 9 disciplines, indicating a stable but non-specialized output in technical and core areas outside of language arts.</p>
-            </div>
-
-            {/* REMARKS & RECOMMENDATIONS - Adjusted to 60px (6p) each */}
-            <div className="grid grid-cols-1 gap-1 mb-[2px] shrink-0">
-               <div className="bg-white border border-gray-200 px-4 py-2 rounded-xl relative h-[60px] overflow-hidden flex flex-col justify-center">
-                  <div className="absolute top-0 right-0 px-2 py-0.5 bg-blue-900 text-white text-[4px] font-black uppercase tracking-widest rounded-bl-lg">Facilitator Remark Shard</div>
-                  <p className="text-[8.5px] font-black text-blue-950 uppercase leading-snug italic">
-                    THE CANDIDATE EXHIBITS A STABLE ACADEMIC PROFILE WITH SIGNIFICANT STRENGTH IN CORE LITERACY.
+            {/* NRT ANALYTICAL APPENDICES */}
+            <div className="grid grid-cols-1 gap-2 mb-2 shrink-0">
+               <div className="bg-slate-900 text-white px-5 py-3 rounded-2xl relative h-[75px] overflow-hidden flex flex-col justify-center">
+                  <div className="absolute top-0 right-0 px-3 py-0.5 bg-blue-600 text-white text-[5px] font-black uppercase tracking-widest rounded-bl-xl">Instructional Feedback Shard</div>
+                  <p className="text-[9.5px] font-black text-blue-100 uppercase leading-snug italic">
+                    {student.overallRemark || 'The candidate demonstrates a stable academic profile with consistent mastery in core disciplines. Continued focus on Section B articulation is recommended.'}
                   </p>
                </div>
-               <div className="bg-indigo-50 border border-indigo-100 px-4 py-2 rounded-xl relative h-[60px] overflow-hidden flex flex-col justify-center">
-                  <div className="absolute top-0 right-0 px-2 py-0.5 bg-indigo-900 text-white text-[4px] font-black uppercase tracking-widest rounded-bl-lg">Administrative Recommendation Shard</div>
-                  <p className="text-[8px] font-bold text-indigo-900 uppercase leading-tight">
-                     REQUIRES INTENSIVE FOCUS ON ANALYTICAL APPLICATIONS AND REMEDIAL TUTORIALS IN IDENTIFIED AREAS.
+               <div className="bg-indigo-50 border border-indigo-200 px-5 py-3 rounded-2xl relative h-[75px] overflow-hidden flex flex-col justify-center">
+                  <div className="absolute top-0 right-0 px-3 py-0.5 bg-indigo-900 text-white text-[5px] font-black uppercase tracking-widest rounded-bl-xl">Administrative Recommendation</div>
+                  <p className="text-[9px] font-bold text-indigo-900 uppercase leading-tight">
+                     PROMOTION OF INTENSIVE REMEDIAL CLUSTERS IN IDENTIFIED WEAK STRANDS. COGNITIVE CALIBRATION REQUIRED FOR TECHNICAL PAPERS.
                   </p>
                </div>
             </div>
 
-            {/* SIGNATURE NODES (AUTHORIZATION) */}
-            <div className="flex justify-between items-end mt-auto pb-1 border-t border-slate-100 pt-1 shrink-0">
-               <div className="w-[30%] text-center border-t-[1.5px] border-slate-900 pt-1">
-                  <p className="text-[6px] font-black uppercase text-slate-400 tracking-widest mb-0.5">
+            {/* SIGNATURE NODES */}
+            <div className="flex justify-between items-end mt-auto pb-2 border-t-[1.5px] border-slate-100 pt-4 shrink-0">
+               <div className="w-[30%] text-center border-t-2 border-slate-950 pt-2">
+                  <p className="text-[7px] font-black uppercase text-slate-400 tracking-widest mb-1">
                     <EditableField value={settings.adminRoleTitle || "Academy Director"} onChange={(v) => onSettingChange('adminRoleTitle', v)} />
                   </p>
-                  <div className="font-black text-blue-950 text-[8px] uppercase truncate">
+                  <div className="font-black text-blue-950 text-[10px] uppercase truncate">
                     <EditableField value={settings.headTeacherName} onChange={(v) => onSettingChange('headTeacherName', v)} />
                   </div>
                </div>
-               <div className="w-[30%] text-center border-t-[1.5px] border-slate-900 pt-1">
-                  <p className="text-[6px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Resumption Node</p>
-                  <div className="font-black text-red-700 text-[8px] uppercase">
+               <div className="w-[30%] text-center border-t-2 border-slate-950 pt-2">
+                  <p className="text-[7px] font-black uppercase text-slate-400 tracking-widest mb-1">Next Resumption</p>
+                  <div className="font-black text-red-700 text-[10px] uppercase">
                     <EditableField value={settings.nextTermBegin} onChange={(v) => onSettingChange('nextTermBegin', v)} />
                   </div>
                </div>
