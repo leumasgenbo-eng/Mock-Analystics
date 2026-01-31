@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { MasterQuestion, BloomsScale, StaffRewardTrade } from '../../types';
 import { supabase } from '../../supabaseClient';
@@ -74,7 +75,7 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
          last_updated: new Date().toISOString()
       });
 
-      // 2. ATOMIC MERGE WITH MASTER BANK (Prevention of Data Loss)
+      // 2. ATOMIC MERGE WITH MASTER BANK (HQ HUB Sync)
       const bankId = `master_bank_${sanitizedSubject}`;
       const { data: currentMaster } = await supabase
         .from('uba_persistence')
@@ -84,11 +85,10 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
       
       const masterPool = Array.isArray(currentMaster?.payload) ? currentMaster.payload : [];
       
-      // Ensure we aren't adding a duplicate ID if the sync double-triggered
       if (!masterPool.some((q: MasterQuestion) => q.id === newQ.id)) {
         await supabase.from('uba_persistence').upsert({
            id: bankId,
-           hub_id: 'MASTER_HUB',
+           hub_id: 'HQ-HUB',
            payload: [...masterPool, newQ],
            last_updated: new Date().toISOString()
         });
@@ -142,7 +142,7 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
       
       await supabase.from('uba_persistence').upsert({
         id: 'global_staff_rewards',
-        hub_id: 'HQ_MARKETING',
+        hub_id: 'HQ-HUB',
         payload: nextTrades,
         last_updated: new Date().toISOString()
       });
@@ -189,7 +189,7 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
               </div>
               <div className="w-px h-8 bg-white/10"></div>
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${untradedCount >= 5 ? 'bg-emerald-500 animate-pulse' : 'bg-white/10 text-white/20'}`}>
-                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
               </div>
            </div>
         </div>
@@ -252,11 +252,6 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({ activeFacilitat
                      <p className="text-xs font-bold text-slate-700 uppercase leading-relaxed">"{q.questionText}"</p>
                   </div>
                ))}
-               {questions.length === 0 && (
-                  <div className="py-20 text-center opacity-30 flex flex-col items-center gap-4">
-                     <p className="font-black uppercase text-[10px] tracking-widest">No local shards found in registry</p>
-                  </div>
-               )}
             </div>
          </div>
       </div>

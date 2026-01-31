@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { ProcessedStudent, ClassStatistics, GlobalSettings, SchoolRegistryEntry } from '../../types';
 import ReportCard from '../reports/ReportCard';
@@ -7,6 +6,8 @@ import PupilGlobalMatrix from './PupilGlobalMatrix';
 import PupilMeritView from './PupilMeritView';
 import PupilBeceLedger from './PupilBeceLedger';
 import PupilAcademicJourney from './PupilAcademicJourney';
+import PupilPracticeHub from './PupilPracticeHub';
+import PupilCurriculumInsight from './PupilCurriculumInsight';
 import ReportBrandingHeader from '../shared/ReportBrandingHeader';
 
 interface PupilDashboardProps {
@@ -24,7 +25,7 @@ interface PupilDashboardProps {
 const PupilDashboard: React.FC<PupilDashboardProps> = ({ 
   student, stats, settings, classAverageAggregate, totalEnrolled, onSettingChange, globalRegistry, onLogout 
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'report' | 'merit' | 'bece' | 'journey' | 'detailed' | 'global'>('report');
+  const [activeSubTab, setActiveSubTab] = useState<'report' | 'merit' | 'bece' | 'journey' | 'detailed' | 'global' | 'practice' | 'curriculum'>('report');
 
   if (!student) {
     return (
@@ -40,6 +41,8 @@ const PupilDashboard: React.FC<PupilDashboardProps> = ({
 
   const navItems = [
     { id: 'report', label: 'My Report Card', icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' },
+    { id: 'curriculum', label: 'Topic Mastery', icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11' },
+    { id: 'practice', label: 'Practice Hub', icon: 'M12 20h9M3 20h9M10 10l4 4m0-4l-4 4' },
     { id: 'merit', label: 'My Merit Status', icon: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z' },
     { id: 'bece', label: 'BECE Ledger', icon: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' },
     { id: 'journey', label: 'Progress Trend', icon: 'M12 20V10M18 20V4M6 20v-6' },
@@ -49,7 +52,6 @@ const PupilDashboard: React.FC<PupilDashboardProps> = ({
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans flex flex-col p-4 md:p-8 print:p-0">
-      {/* Identity Verification Bar */}
       <div className="no-print w-full bg-slate-900 text-white rounded-3xl mb-8 p-4 flex flex-col md:flex-row justify-between items-center gap-4 shadow-xl border border-white/5">
          <div className="flex items-center gap-5">
             <div className="relative">
@@ -70,7 +72,6 @@ const PupilDashboard: React.FC<PupilDashboardProps> = ({
          </div>
       </div>
 
-      {/* Institutional Branding Header */}
       <div className="bg-white rounded-[3.5rem] p-10 shadow-2xl border border-gray-100 mb-10">
          <ReportBrandingHeader 
            settings={settings} 
@@ -83,7 +84,6 @@ const PupilDashboard: React.FC<PupilDashboardProps> = ({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1">
-        {/* Navigation Sidebar */}
         <div className="lg:col-span-3 space-y-6 no-print">
            <div className="flex flex-col gap-2 bg-slate-200/50 p-2 rounded-[2.5rem]">
               {navItems.map(t => (
@@ -105,7 +105,6 @@ const PupilDashboard: React.FC<PupilDashboardProps> = ({
            </div>
         </div>
 
-        {/* Content Portal Area */}
         <div className="lg:col-span-9">
            <div className="animate-in slide-in-from-bottom-8 duration-700 h-full">
               {activeSubTab === 'report' && (
@@ -114,6 +113,8 @@ const PupilDashboard: React.FC<PupilDashboardProps> = ({
                    <ReportCard student={student} stats={stats} settings={settings} onSettingChange={onSettingChange} classAverageAggregate={classAverageAggregate} totalEnrolled={totalEnrolled} />
                 </div>
               )}
+              {activeSubTab === 'curriculum' && <PupilCurriculumInsight student={student} schoolId={settings.schoolNumber} />}
+              {activeSubTab === 'practice' && <PupilPracticeHub schoolId={settings.schoolNumber} studentId={student.id} />}
               {activeSubTab === 'merit' && <PupilMeritView student={student} settings={settings} />}
               {activeSubTab === 'bece' && <PupilBeceLedger student={student} />}
               {activeSubTab === 'journey' && <PupilAcademicJourney student={student} mockSeriesNames={settings.committedMocks || []} />}

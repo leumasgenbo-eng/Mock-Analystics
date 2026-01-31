@@ -31,6 +31,25 @@ export interface InstitutionalPerformance {
   timestamp: string;
 }
 
+export interface TopicMastery {
+  strand: string;
+  subStrand: string;
+  indicator: string;
+  averageScore: number;
+  attempts: number;
+  status: 'MASTERED' | 'DEVELOPING' | 'CRITICAL';
+}
+
+export interface ScopeCoverage {
+  subject: string;
+  strand: string;
+  subStrand: string;
+  indicator: string;
+  isCovered: boolean;
+  coveredDate?: string;
+  facilitatorNote?: string;
+}
+
 export interface RemarkMetric {
   text: string;
   count: number;
@@ -113,6 +132,7 @@ export interface StudentData {
   mockData: Record<string, MockScoreSet>; 
   seriesHistory?: Record<string, MockSeriesRecord>;
   beceResults?: Record<string, BeceResult>;
+  masteryMap?: TopicMastery[];
 }
 
 export interface MockScoreSet {
@@ -166,6 +186,7 @@ export interface ProcessedStudent {
   seriesHistory?: Record<string, MockSeriesRecord>;
   mockData?: Record<string, MockScoreSet>;
   beceResults?: Record<string, BeceResult>;
+  masteryMap?: TopicMastery[];
 }
 
 export interface ClassStatistics {
@@ -371,6 +392,26 @@ export interface MasterQuestion {
   parts: QuestionSubPart[];
   diagramUrl?: string;
   isTraded?: boolean;
+  rating?: number; // 0-5
+  usageCount?: number;
+}
+
+export interface PracticeAssignment {
+  id: string;
+  title: string;
+  subject: string;
+  timeLimit: number; // in minutes
+  questions: MasterQuestion[];
+  pushedBy: string;
+  timestamp: string;
+}
+
+export interface PracticeResult {
+  studentId: number;
+  assignmentId: string;
+  score: number;
+  timeTaken: number;
+  completedAt: string;
 }
 
 export interface QuestionPack {

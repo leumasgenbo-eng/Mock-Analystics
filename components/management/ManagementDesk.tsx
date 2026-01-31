@@ -17,6 +17,7 @@ import LocalSyncPortal from './LocalSyncPortal';
 import RewardPortal from './RewardPortal';
 import SchoolCredentialView from './SchoolCredentialView';
 import DataCleanupPortal from './DataCleanupPortal';
+import CurriculumCoveragePortal from './CurriculumCoveragePortal';
 
 // Extracted UI Layout components
 import ManagementHeader from './ManagementHeader';
@@ -97,6 +98,16 @@ const ManagementDesk: React.FC<ManagementDeskProps> = ({
             />
           )}
           {activeTab === 'facilitatorDesk' && <FacilitatorDesk students={students} setStudents={setStudents} settings={settings} onSettingChange={onSettingChange} onSave={onSave} />}
+          {activeTab === 'curriculumScope' && (
+             <CurriculumCoveragePortal 
+               settings={settings} 
+               students={students} 
+               subjects={subjects} 
+               isFacilitator={isFacilitator} 
+               activeFacilitator={activeFacilitator} 
+               onSave={onSave} 
+             />
+          )}
           {activeTab === 'likelyQuestions' && <LikelyQuestionDesk activeFacilitator={activeFacilitator} />}
           {activeTab === 'questionsBank' && <SubjectQuestionsBank activeFacilitator={activeFacilitator} subjects={subjects} />}
           {activeTab === 'enrolmentForward' && (
