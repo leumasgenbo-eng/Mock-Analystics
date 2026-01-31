@@ -17,7 +17,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
   const [batchSize, setBatchSize] = useState<number>(40);
   const [targetFolder, setTargetFolder] = useState<'objectives' | 'theory'>('objectives');
 
-  // Recursive Filters
+  // Triple-Tier Recursive Filters
   const [filterStrand, setFilterStrand] = useState('ALL');
   const [filterSubStrand, setFilterSubStrand] = useState('ALL');
   const [filterIndicator, setFilterIndicator] = useState('ALL');
@@ -42,20 +42,20 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
     fetchBank();
   }, [selectedSubject]);
 
-  // Dynamic filter lists
+  // Logic: Extract filter lists based on parent selection
   const strandList = useMemo(() => ['ALL', ...Array.from(new Set(questions.map(q => q.strand || 'UNGROUPED')))], [questions]);
   
   const subStrandList = useMemo(() => {
-    const filtered = filterStrand === 'ALL' ? questions : questions.filter(q => q.strand === filterStrand);
-    return ['ALL', ...Array.from(new Set(filtered.map(q => q.subStrand || 'UNGROUPED')))];
+    const filteredByStrand = filterStrand === 'ALL' ? questions : questions.filter(q => q.strand === filterStrand);
+    return ['ALL', ...Array.from(new Set(filteredByStrand.map(q => q.subStrand || 'UNGROUPED')))];
   }, [questions, filterStrand]);
 
   const indicatorList = useMemo(() => {
-    const filtered = questions.filter(q => 
+    const filteredBySub = questions.filter(q => 
       (filterStrand === 'ALL' || q.strand === filterStrand) && 
       (filterSubStrand === 'ALL' || q.subStrand === filterSubStrand)
     );
-    return ['ALL', ...Array.from(new Set(filtered.map(q => q.indicator || 'UNGROUPED')))];
+    return ['ALL', ...Array.from(new Set(filteredBySub.map(q => q.indicator || 'UNGROUPED')))];
   }, [questions, filterStrand, filterSubStrand]);
 
   const filteredSet = useMemo(() => {
@@ -67,28 +67,16 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
     });
   }, [questions, filterStrand, filterSubStrand, filterIndicator]);
 
-  const toggleCollect = (q: MasterQuestion, folder: 'objectives' | 'theory') => {
-    const current = collectedQs[folder];
-    const exists = current.some(x => x.id === q.id);
-    if (exists) {
-      setCollectedQs({ ...collectedQs, [folder]: current.filter(x => x.id !== q.id) });
-    } else {
-      setCollectedQs({ ...collectedQs, [folder]: [...current, q] });
-    }
-  };
-
   const handleAutoBatchPull = () => {
-    // Pick from the filtered set based on type
     const typeFiltered = filteredSet.filter(q => 
       targetFolder === 'objectives' ? q.type === 'OBJECTIVE' : q.type === 'THEORY'
     );
 
     if (typeFiltered.length === 0) {
-      alert("HQ Search Result: No questions match the current filter criteria for this format.");
+      alert("HQ Search Result: No questions match the current criteria for this format.");
       return;
     }
 
-    // Shuffle and pick
     const shuffled = [...typeFiltered].sort(() => Math.random() - 0.5);
     const batch = shuffled.slice(0, batchSize);
 
@@ -98,6 +86,16 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
     }));
 
     alert(`HQ PULL SUCCESSFUL: ${batch.length} items added to ${targetFolder.toUpperCase()} folder.`);
+  };
+
+  const toggleCollect = (q: MasterQuestion, folder: 'objectives' | 'theory') => {
+    const current = collectedQs[folder];
+    const exists = current.some(x => x.id === q.id);
+    if (exists) {
+      setCollectedQs({ ...collectedQs, [folder]: current.filter(x => x.id !== q.id) });
+    } else {
+      setCollectedQs({ ...collectedQs, [folder]: [...current, q] });
+    }
   };
 
   const handleSyncAndDownload = (type: 'objectives' | 'theory') => {
@@ -139,7 +137,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
   return (
     <div className="space-y-10 animate-in fade-in duration-700 pb-20 font-sans">
       
-      {/* CAPI BANK HEADER */}
+      {/* HEADER SECTION */}
       <div className="bg-slate-950 text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/10 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
         <div className="relative flex flex-col md:flex-row justify-between items-center gap-8">
@@ -206,6 +204,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
               </div>
            </div>
 
+           {/* DRILL-DOWN FILTERS */}
            <div className="bg-white border border-gray-100 rounded-[3rem] p-10 shadow-2xl space-y-10">
               <div className="space-y-6">
                  <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-widest flex items-center gap-2">
@@ -234,6 +233,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
                  </div>
               </div>
 
+              {/* FOLDER STATS */}
               <div className="space-y-6 pt-6 border-t border-gray-50">
                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Prepared Work Packs</h4>
                  <div className="grid grid-cols-1 gap-4">
@@ -266,22 +266,22 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
            </div>
         </div>
 
-        {/* QUESTION RESULTS MATRIX */}
+        {/* RESULTS AREA */}
         <div className="lg:col-span-8 space-y-6">
-           <div className="bg-white border border-gray-100 p-6 rounded-[2.5rem] flex justify-between items-center shadow-sm no-print">
+           <div className="bg-white border border-gray-100 p-6 rounded-[2.5rem] flex justify-between items-center shadow-sm">
               <div className="flex items-center gap-4">
                  <div className="bg-blue-50 text-blue-600 px-4 py-1.5 rounded-full text-[9px] font-black uppercase border border-blue-100">
-                    HQ Available: {questions.length}
+                    HQ Pool: {questions.length}
                  </div>
                  <div className="bg-indigo-50 text-indigo-600 px-4 py-1.5 rounded-full text-[9px] font-black uppercase border border-indigo-100">
-                    Filtered: {filteredSet.length}
+                    Filter Match: {filteredSet.length}
                  </div>
               </div>
               <button 
                 onClick={() => setCollectedQs({ objectives: [], theory: [] })}
                 className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors"
               >
-                Flush Folders
+                Flush Shards
               </button>
            </div>
 
@@ -348,7 +348,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
            ) : (
               <div className="py-40 text-center bg-slate-50 border-4 border-dashed border-gray-100 rounded-[4rem] flex flex-col items-center gap-6 opacity-30">
                  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                 <p className="text-sm font-black uppercase tracking-[0.5em] max-w-sm">No curriculum DNA found in HQ Pull for these parameters</p>
+                 <p className="text-sm font-black uppercase tracking-[0.5em] max-w-sm">No curriculum DNA matching criteria</p>
               </div>
            )}
         </div>

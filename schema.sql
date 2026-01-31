@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS public.uba_audit (
 -- ==========================================================
 
 -- Disable RLS to ensure "it just works" without Auth sessions
+-- Note: Re-running these commands is non-destructive
 ALTER TABLE public.uba_identities DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uba_persistence DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uba_audit DISABLE ROW LEVEL SECURITY;
