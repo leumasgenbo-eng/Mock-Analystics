@@ -1,6 +1,6 @@
 
 -- ==========================================================
--- UNITED BAYLOR ACADEMY: CORE DATA INTEGRITY SCHEMA v5.8
+-- UNITED BAYLOR ACADEMY: CORE DATA INTEGRITY SCHEMA v6.0
 -- ==========================================================
 
 -- 1. IDENTITY HUB: Permanent Institutional Handshake Registry
@@ -13,9 +13,14 @@ CREATE TABLE IF NOT EXISTS public.uba_identities (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- SEED: MASTER SUPER ADMIN IDENTITY (Non-destructive)
+INSERT INTO public.uba_identities (email, full_name, node_id, hub_id, role)
+VALUES ('hq@uba.edu', 'HQ CONTROLLER', 'MASTER-NODE-01', 'HQ-HUB', 'super_admin')
+ON CONFLICT (email) DO NOTHING;
+
 -- 2. PERSISTENCE HUB: Unified JSONB Shards for Multi-Tenant Data
 -- Stores: Settings, Students, Facilitators, and Pushed Practice Shards
--- This table is "migration-less": no data loss occurs when adding new fields.
+-- JSONB structure ensures that adding new metadata (like order or word counts) does not require table migrations.
 CREATE TABLE IF NOT EXISTS public.uba_persistence (
     id TEXT PRIMARY KEY,                 
     hub_id TEXT NOT NULL,                
