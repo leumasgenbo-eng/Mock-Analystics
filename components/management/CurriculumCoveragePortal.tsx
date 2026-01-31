@@ -18,6 +18,7 @@ const CurriculumCoveragePortal: React.FC<CurriculumCoveragePortalProps> = ({ set
   const [isBroadcasting, setIsBroadcasting] = useState(false);
 
   // 1. DYNAMIC SYLLABUS: Aggregated from all Mock Resources for this subject
+  // This automatically fetches strands/sub-strands defined in the Resource Hub
   const syllabusFromResources = useMemo(() => {
     const uniqueIndicators: Record<string, QuestionIndicatorMapping> = {};
     const portal = settings.resourcePortal || {};
@@ -33,13 +34,14 @@ const CurriculumCoveragePortal: React.FC<CurriculumCoveragePortalProps> = ({ set
        }
     });
     
-    return Object.values(uniqueIndicators).sort((a,b) => a.indicatorCode.localeCompare(b.indicatorCode));
+    return Object.values(uniqueIndicators).sort((a,b) => (a.indicatorCode || "").localeCompare(b.indicatorCode || ""));
   }, [settings.resourcePortal, selectedSubject]);
 
-  // 2. FETCH COVERAGE RECORD
+  // 2. FETCH COVERAGE RECORD FROM SUPABASE
   useEffect(() => {
     const fetchCoverage = async () => {
       const hubId = settings.schoolNumber;
+      if (!hubId) return;
       const subKey = selectedSubject.replace(/\s+/g, '');
       const { data } = await supabase.from('uba_persistence').select('payload').eq('id', `coverage_${hubId}_${subKey}`).maybeSingle();
       if (data?.payload) setCoverageMap(data.payload);
@@ -69,6 +71,8 @@ const CurriculumCoveragePortal: React.FC<CurriculumCoveragePortalProps> = ({ set
     }
 
     setCoverageMap(next);
+    
+    // Persist immediately to institutional tracker shard
     const hubId = settings.schoolNumber;
     const subKey = selectedSubject.replace(/\s+/g, '');
     await supabase.from('uba_persistence').upsert({
@@ -84,7 +88,8 @@ const CurriculumCoveragePortal: React.FC<CurriculumCoveragePortalProps> = ({ set
     try {
       const hubId = settings.schoolNumber;
       const subKey = selectedSubject.replace(/\s+/g, '');
-      // Push specific handshake for pupils to consume
+      
+      // Push specific handshake for pupils to consume (Mirrors status to Pupil Portal)
       await supabase.from('uba_persistence').upsert({
         id: `coverage_handshake_${hubId}_${subKey}`,
         hub_id: hubId,
@@ -100,8 +105,7 @@ const CurriculumCoveragePortal: React.FC<CurriculumCoveragePortalProps> = ({ set
     } catch (e) {
       alert("Handshake Interrupted.");
     } finally {
-      setIsBroadcasting(true);
-      setTimeout(() => setIsBroadcasting(false), 2000);
+      setIsBroadcasting(false);
     }
   };
 
@@ -123,8 +127,8 @@ const CurriculumCoveragePortal: React.FC<CurriculumCoveragePortalProps> = ({ set
         <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
         <div className="relative flex flex-col lg:flex-row justify-between items-center gap-8">
            <div className="space-y-2">
-              <h2 className="text-3xl font-black uppercase tracking-tight">Scope & Coverage Tracker</h2>
-              <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.4em]">Aggregated from Resource Hub Indicators</p>
+              <h2 className="text-3xl font-black uppercase tracking-tight leading-none">Scope & Coverage Tracker</h2>
+              <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.4em]">Integrated with Resource Hub Strands</p>
            </div>
            <div className="flex gap-4">
               <select 
@@ -137,7 +141,7 @@ const CurriculumCoveragePortal: React.FC<CurriculumCoveragePortalProps> = ({ set
               </select>
               <button 
                 onClick={handleBroadcastToPupils}
-                disabled={isBroadcasting}
+                disabled={isBroadcasting || syllabusFromResources.length === 0}
                 className={`bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-xl transition-all active:scale-95 flex items-center gap-2 ${isBroadcasting ? 'animate-pulse' : ''}`}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -151,12 +155,12 @@ const CurriculumCoveragePortal: React.FC<CurriculumCoveragePortalProps> = ({ set
         <div className="bg-white p-20 rounded-[3rem] border-4 border-dashed border-gray-100 text-center space-y-4 opacity-50">
            <svg className="w-16 h-16 text-slate-300 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5"><path d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"/></svg>
            <p className="text-sm font-black uppercase text-slate-500 tracking-[0.2em]">No syllabus indicators found in Resources Hub for {selectedSubject}.</p>
-           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Map questions to strands in the Resources portal to populate this tracker.</p>
+           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Facilitators must map questions to strands in the Resources portal to populate this tracker.</p>
         </div>
       ) : (
         <div className="bg-white border border-gray-100 rounded-[3rem] shadow-xl overflow-hidden">
            <div className="bg-gray-50 px-10 py-6 border-b border-gray-100 flex justify-between items-center">
-              <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-widest">Master Implemention Shards: {selectedSubject}</h4>
+              <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-widest">Master Implementation Ledger: {selectedSubject}</h4>
               <div className="flex gap-4">
                  <div className="flex items-center gap-2"><div className="w-2 h-2 bg-emerald-500 rounded-full"></div><span className="text-[8px] font-black uppercase">Cleared</span></div>
                  <div className="flex items-center gap-2"><div className="w-2 h-2 bg-slate-200 rounded-full"></div><span className="text-[8px] font-black uppercase">Outstanding</span></div>
@@ -167,9 +171,9 @@ const CurriculumCoveragePortal: React.FC<CurriculumCoveragePortalProps> = ({ set
               <table className="w-full text-left border-collapse">
                  <thead>
                     <tr className="bg-slate-900 text-slate-500 text-[8px] font-black uppercase tracking-[0.2em] border-b border-slate-800">
-                       <th className="px-10 py-5 w-16 text-center">Status</th>
-                       <th className="px-6 py-5">Strand Shard</th>
-                       <th className="px-6 py-5">Sub-Strand Node</th>
+                       <th className="px-10 py-5 w-16 text-center">Coverage</th>
+                       <th className="px-6 py-5">Strand Name</th>
+                       <th className="px-6 py-5">Sub-Strand / Topic</th>
                        <th className="px-6 py-5">Indicator Code</th>
                        <th className="px-6 py-5 text-center">Cohort Mastery</th>
                     </tr>
@@ -197,7 +201,7 @@ const CurriculumCoveragePortal: React.FC<CurriculumCoveragePortalProps> = ({ set
                                  {isCovered && <span className="text-[7px] font-bold text-emerald-500 uppercase mt-1">Cleared: {new Date(coverage.coveredDate!).toLocaleDateString()}</span>}
                               </div>
                            </td>
-                           <td className="px-6 py-6 font-bold text-[10px] text-slate-400 uppercase">{ind.subStrand}</td>
+                           <td className="px-6 py-6 font-bold text-[10px] text-slate-400 uppercase truncate max-w-[200px]">{ind.subStrand}</td>
                            <td className="px-6 py-6">
                               <span className="font-mono text-[10px] text-blue-600 font-black bg-blue-50 px-3 py-1 rounded-lg border border-blue-100">{ind.indicatorCode}</span>
                            </td>

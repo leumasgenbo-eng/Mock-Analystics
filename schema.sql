@@ -1,9 +1,9 @@
 
 -- ==========================================================
--- UNITED BAYLOR ACADEMY: DATA INTEGRITY SCHEMA v7.1
+-- UNITED BAYLOR ACADEMY: DATA INTEGRITY SCHEMA v7.2
 -- ==========================================================
--- This schema is designed to be non-destructive. 
--- Running this script will NOT erase existing data.
+-- PROTECTIVE PROTOCOL: No DROP statements allowed. 
+-- All operations are idempotent (can be run many times without loss).
 
 -- 1. IDENTITY HUB: Unified Credential Shard
 CREATE TABLE IF NOT EXISTS public.uba_identities (
@@ -16,12 +16,12 @@ CREATE TABLE IF NOT EXISTS public.uba_identities (
 );
 
 -- 2. INSTRUCTIONAL SHARDS: Dedicated Handshake Table
--- Prevents "No active shards found" by centralizing facilitator broadcasts
+-- Stores facilitator-broadcasted practice sets
 CREATE TABLE IF NOT EXISTS public.uba_instructional_shards (
     id TEXT PRIMARY KEY,                 -- practice_shards_{hubId}_{subjectKey}
     hub_id TEXT NOT NULL,
     subject TEXT NOT NULL,
-    payload JSONB NOT NULL,              -- The full PracticeAssignment object
+    payload JSONB NOT NULL,              
     pushed_by TEXT NOT NULL,
     last_updated TIMESTAMPTZ DEFAULT NOW()
 );
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS public.uba_practice_results (
     completed_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. PERSISTENCE HUB: Generic settings and student shards
+-- 4. PERSISTENCE HUB: Institutional Shards (Settings, Students, etc.)
 CREATE TABLE IF NOT EXISTS public.uba_persistence (
     id TEXT PRIMARY KEY,                 
     hub_id TEXT NOT NULL,                
@@ -62,21 +62,20 @@ CREATE TABLE IF NOT EXISTS public.uba_bulk_logs (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- SEEDING: HQ CONTROLLER (Superadmin Identity Handshake)
--- This ensures the system always has a master entry for HQ access.
--- ON CONFLICT ensures existing data is never overwritten or lost.
+-- SEEDING: HQ MASTER CONTROLLER (Superadmin Identity)
+-- ON CONFLICT ensures we don't duplicate or overwrite if already present.
 INSERT INTO public.uba_identities (email, full_name, node_id, hub_id, role)
 VALUES ('hq@unitedbaylor.edu', 'HQ CONTROLLER', 'MASTER-NODE-01', 'SMA-HQ', 'super_admin')
 ON CONFLICT (email) DO NOTHING;
 
--- SECURITY PROTOCOL (RLS disabled for Hub Node cross-talk)
+-- SECURITY PROTOCOL (RLS disabled for Hub Node communication)
 ALTER TABLE public.uba_identities DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uba_instructional_shards DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uba_practice_results DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uba_persistence DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uba_bulk_logs DISABLE ROW LEVEL SECURITY;
 
--- INDICES for high-speed handshake resolution
+-- INDICES for performance
 CREATE INDEX IF NOT EXISTS idx_shards_hub_subject ON public.uba_instructional_shards(hub_id, subject);
 CREATE INDEX IF NOT EXISTS idx_results_student ON public.uba_practice_results(student_id);
 CREATE INDEX IF NOT EXISTS idx_results_hub ON public.uba_practice_results(hub_id);
