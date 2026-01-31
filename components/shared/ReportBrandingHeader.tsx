@@ -22,7 +22,7 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
 }) => {
   return (
     <div className={`text-center relative border-b-[4px] border-double border-blue-950 pb-8 mb-8 w-full font-sans animate-in fade-in duration-1000`}>
-      {/* Institutional Metadata */}
+      {/* Network Metadata */}
       <div className="text-[8px] font-black text-blue-600 uppercase tracking-[0.5em] mb-6 flex justify-center items-center gap-3 no-print">
         <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.6)]"></div>
         <span>INSTITUTIONAL HUB:</span>
@@ -30,7 +30,7 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
       </div>
 
       <div className="flex flex-col md:flex-row items-center justify-center gap-12">
-        {/* Institutional Seal */}
+        {/* Seal Node */}
         <div className="w-28 h-28 flex items-center justify-center shrink-0">
           {settings.schoolLogo ? (
             <img src={settings.schoolLogo} alt="Academy Seal" className="max-w-full max-h-full object-contain" />
@@ -61,7 +61,7 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
         </div>
       </div>
 
-      {/* Report Identifier Cluster */}
+      {/* Ident Title Cluster */}
       <div className="mt-8 mb-6">
          <h2 className="text-2xl font-black text-red-700 uppercase tracking-[0.4em] bg-red-50/50 py-3 border-y border-red-100">
            {readOnly ? reportTitle : <EditableField value={reportTitle} onChange={(v) => onSettingChange('examTitle', v.toUpperCase())} className="text-center w-full" />}
@@ -69,7 +69,7 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
          {subtitle && <p className="text-[11px] font-black text-blue-900 uppercase tracking-[0.6em] mt-3">{subtitle}</p>}
       </div>
 
-      {/* Institutional Handshake Cluster */}
+      {/* Contact Matrix */}
       <div className="flex justify-center flex-wrap gap-x-14 gap-y-3 text-[10px] font-black text-blue-950 uppercase tracking-[0.3em] pt-6 border-t border-slate-50">
         <div className="flex gap-2">
           <span className="text-slate-300">TEL:</span>

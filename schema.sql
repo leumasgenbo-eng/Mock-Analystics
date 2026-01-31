@@ -1,40 +1,34 @@
 
 -- ==========================================================
--- UNITED BAYLOR ACADEMY: CORE DATA INTEGRITY SCHEMA v5.5
+-- UNITED BAYLOR ACADEMY: CORE DATA INTEGRITY SCHEMA v5.8
 -- ==========================================================
 
 -- 1. IDENTITY HUB: Permanent Institutional Handshake Registry
--- Identifies users (Admin, Facilitator, Pupil) and maps them to Hubs.
 CREATE TABLE IF NOT EXISTS public.uba_identities (
     email TEXT PRIMARY KEY,
     full_name TEXT NOT NULL,
-    node_id TEXT NOT NULL,         -- System-generated unique identifier
-    hub_id TEXT NOT NULL,          -- Mapping to specific School/Registry Hub
-    role TEXT NOT NULL,            -- school_admin, facilitator, pupil
+    node_id TEXT NOT NULL,         
+    hub_id TEXT NOT NULL,          
+    role TEXT NOT NULL,            
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- SEED: MASTER SUPER ADMIN IDENTITY (Non-destructive)
-INSERT INTO public.uba_identities (email, full_name, node_id, hub_id, role)
-VALUES ('hq@uba.edu', 'HQ CONTROLLER', 'MASTER-NODE-01', 'HQ-HUB', 'super_admin')
-ON CONFLICT (email) DO NOTHING;
-
 -- 2. PERSISTENCE HUB: Unified JSONB Shards for Multi-Tenant Data
--- This table is "migration-less". New data types are stored within the JSONB 'payload'
--- ensuring no data is lost during system updates.
+-- Stores: Settings, Students, Facilitators, and Pushed Practice Shards
+-- This table is "migration-less": no data loss occurs when adding new fields.
 CREATE TABLE IF NOT EXISTS public.uba_persistence (
-    id TEXT PRIMARY KEY,                 -- e.g., 'SMA-123_students', 'practice_shards_SMA-123_Math'
-    hub_id TEXT NOT NULL,                -- Identifies the school/hub
-    payload JSONB NOT NULL,              -- Stores Students, Settings, and Ordered Questions
+    id TEXT PRIMARY KEY,                 
+    hub_id TEXT NOT NULL,                
+    payload JSONB NOT NULL,              
     last_updated TIMESTAMPTZ DEFAULT NOW(),
-    user_id UUID                         -- Optional owner mapping
+    user_id UUID                         
 );
 
 -- 3. AUDIT HUB: Transactional Integrity Logs
 CREATE TABLE IF NOT EXISTS public.uba_bulk_logs (
     id BIGSERIAL PRIMARY KEY,
     hub_id TEXT NOT NULL,
-    job_type TEXT NOT NULL,              -- e.g., 'PUPIL_ENROLLMENT', 'CLOUD_PUSH'
+    job_type TEXT NOT NULL,              
     status TEXT NOT NULL,
     filename TEXT,
     success_count INTEGER,
