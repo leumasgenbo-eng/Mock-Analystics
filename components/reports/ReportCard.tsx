@@ -16,25 +16,23 @@ interface ReportCardProps {
 
 const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSettingChange, onStudentUpdate, classAverageAggregate, totalEnrolled, isFacilitator }) => {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isZoomed, setIsZoomed] = useState(false);
   const [scale, setScale] = useState(1);
 
-  // CAPI Fit-to-Screen Logic
+  // CAPI Auto-Fit-to-Screen Logic (Initial Load)
   useEffect(() => {
     const calculateScale = () => {
-      if (isZoomed) {
+      const screenW = window.innerWidth;
+      const docW = 794; // A4 standard width in pixels at 96DPI
+      if (screenW < docW) {
+        setScale((screenW - 32) / docW);
+      } else {
         setScale(1);
-        return;
       }
-      const containerWidth = window.innerWidth > 1000 ? 794 : window.innerWidth - 48;
-      const targetWidth = 794; // A4 in pixels at 96DPI
-      setScale(containerWidth / targetWidth);
     };
-
     calculateScale();
     window.addEventListener('resize', calculateScale);
     return () => window.removeEventListener('resize', calculateScale);
-  }, [isZoomed]);
+  }, []);
 
   const dynamicAnalysis = useMemo(() => {
     const strengths = student.subjects.filter(s => s.finalCompositeScore >= (stats.subjectMeans[s.subject] || 50) + 5).map(s => s.subject);
@@ -66,35 +64,29 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
   };
 
   return (
-    <div className="flex flex-col items-center mb-16 relative w-full overflow-hidden px-4">
+    <div className="flex flex-col items-center mb-16 relative w-full px-2">
        
-       {/* CAPI FLOATING NAVIGATION - MOVE LEFT/RIGHT/ZOOM */}
+       {/* FLOATING CAPTURE ACTION */}
        <div className="fixed bottom-24 right-6 flex flex-col gap-3 no-print z-[100]">
-          <button 
-            onClick={() => setIsZoomed(!isZoomed)} 
-            className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all ${isZoomed ? 'bg-blue-600 text-white' : 'bg-white text-blue-900 border border-blue-100'}`}
-          >
-             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-          </button>
-          <button onClick={handleDownloadPDF} className="w-14 h-14 bg-red-600 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90">
-             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <button onClick={handleDownloadPDF} disabled={isGenerating} className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-all ${isGenerating ? 'bg-gray-400' : 'bg-red-600 text-white'}`}>
+             {isGenerating ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>}
           </button>
        </div>
 
-       {/* ACADEMY BRANDING (EDITABLE IN UI) */}
-       <div className="w-full max-w-[210mm] no-print mb-6 px-6 animate-in fade-in duration-700">
+       {/* ACADEMY BRANDING (EDITABLE PARTICULARS) */}
+       <div className="w-full max-w-[210mm] no-print mb-6 animate-in fade-in duration-700">
           <ReportBrandingHeader settings={settings} onSettingChange={onSettingChange} reportTitle={settings.examTitle} readOnly={false} />
        </div>
 
-       {/* SCALABLE A4 CONTAINER */}
+       {/* A4 REPORT SHARD - WRAPPED IN SCROLLABLE CONTAINER */}
        <div 
-         className="transition-all duration-500 origin-top flex items-center justify-center bg-gray-200/50 rounded-[2rem] p-2"
-         style={{ width: isZoomed ? '210mm' : '100%', height: isZoomed ? 'auto' : `calc(297mm * ${scale})` }}
+         className="overflow-x-auto w-full flex justify-center py-4 bg-gray-100/50 rounded-[2.5rem] shadow-inner no-scrollbar"
+         style={{ minHeight: `calc(297mm * ${scale})` }}
        >
          <div 
            id={`capture-area-${student.id}`} 
-           className="bg-white w-[210mm] h-[297mm] shadow-2xl flex flex-col p-12 box-border font-sans overflow-hidden border border-gray-100"
-           style={{ transform: `scale(${scale})`, transformOrigin: 'top center', flexShrink: 0 }}
+           className="bg-white w-[210mm] h-[297mm] shadow-2xl flex flex-col p-12 box-border font-sans overflow-hidden border border-gray-100 flex-shrink-0"
+           style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}
          >
             {/* ASSESSMENT STRIPE */}
             <div className="shrink-0 mb-8">
@@ -109,7 +101,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
                     { l: 'Series', v: settings.activeMock },
                     { l: 'Term', v: settings.termInfo },
                     { l: 'Cycle', v: settings.academicYear },
-                    { l: 'Authority', v: settings.adminRoleTitle || "DIRECTOR" },
+                    { l: 'Director', v: settings.headTeacherName },
                     { l: 'Registry', v: settings.registryRoleTitle || "EXAM HUB" }
                   ].map((item, i) => (
                     <div key={i} className="flex flex-col items-center bg-gray-50 p-3 rounded-2xl border border-gray-100"><span className="text-[7px] text-blue-500 mb-1">{item.l}</span><span className="text-blue-950 truncate w-full text-center">{item.v}</span></div>
@@ -121,13 +113,13 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
             <div className="grid grid-cols-2 gap-10 mb-8 border-4 border-blue-900 p-8 rounded-[4rem] bg-blue-50/5 shrink-0">
                <div className="space-y-4 border-r-2 border-blue-100 pr-10">
                  <div className="flex flex-col"><span className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Pupil Identity</span><span className="text-xl font-black text-blue-950 uppercase truncate leading-none">{student.name}</span></div>
-                 <div className="flex justify-between items-center"><span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Network Node</span><span className="font-mono text-sm font-black text-blue-800 tracking-tighter">#{student.id.toString().padStart(6, '0')}</span></div>
-                 <div className="flex justify-between items-center"><span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Engagement</span><span className="font-black text-blue-950">{student.attendance} / {settings.attendanceTotal}</span></div>
+                 <div className="flex justify-between items-center"><span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Network Node</span><span className="font-mono text-sm font-black text-blue-800">#{student.id.toString().padStart(6, '0')}</span></div>
+                 <div className="flex justify-between items-center"><span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Attendance</span><span className="font-black text-blue-950">{student.attendance} / {settings.attendanceTotal}</span></div>
                </div>
                <div className="space-y-4">
                  <div className="flex justify-between items-end"><span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Best 6 Agg</span><span className="text-5xl font-black text-blue-950 leading-none tracking-tighter">{student.bestSixAggregate}</span></div>
-                 <div className="flex justify-between items-center"><span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Global Rank</span><span className="font-black text-xl text-blue-900">RANK #{student.rank} OF {totalEnrolled}</span></div>
-                 <div className="flex justify-between items-center"><span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Status Shard</span><span className={`px-4 py-1 rounded-xl text-white text-[10px] font-black uppercase shadow-lg ${student.category === 'Distinction' ? 'bg-green-600' : 'bg-blue-600'}`}>{student.category}</span></div>
+                 <div className="flex justify-between items-center"><span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Global Rank</span><span className="font-black text-xl text-blue-900">#{student.rank} OF {totalEnrolled}</span></div>
+                 <div className="flex justify-between items-center"><span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Status Shard</span><span className={`px-4 py-1 rounded-xl text-white text-[10px] font-black uppercase ${student.category === 'Distinction' ? 'bg-green-600' : 'bg-blue-600'}`}>{student.category}</span></div>
                </div>
             </div>
 
@@ -159,10 +151,10 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
                </table>
             </div>
 
-            {/* VALIDATION NODE */}
+            {/* SIGNATURE NODES */}
             <div className="flex justify-between items-end mt-auto pb-4 border-t-2 border-slate-100 pt-8 shrink-0">
                <div className="w-[35%] text-center border-t-4 border-slate-900 pt-3">
-                  <p className="text-[11px] font-black uppercase text-slate-400 tracking-[0.3em] mb-2">{settings.adminRoleTitle || "Director"}</p>
+                  <p className="text-[11px] font-black uppercase text-slate-400 tracking-[0.3em] mb-2">{settings.adminRoleTitle || "Academy Director"}</p>
                   <div className="font-black text-blue-950 text-[13px] uppercase truncate">{settings.headTeacherName}</div>
                </div>
                <div className="w-[35%] text-center border-t-4 border-slate-900 pt-3">
