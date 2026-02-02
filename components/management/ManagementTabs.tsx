@@ -1,6 +1,7 @@
+
 import React from 'react';
 
-export type ManagementTabType = 'scoreEntry' | 'school' | 'credentials' | 'enrolmentForward' | 'pupils' | 'facilitators' | 'grading' | 'history' | 'resources' | 'facilitatorDesk' | 'localSync' | 'rewards' | 'likelyQuestions' | 'questionsBank' | 'cleanup' | 'curriculumScope';
+export type ManagementTabType = 'scoreEntry' | 'school' | 'credentials' | 'enrolmentForward' | 'pupils' | 'facilitators' | 'grading' | 'history' | 'resources' | 'facilitatorDesk' | 'localSync' | 'rewards' | 'likelyQuestions' | 'questionsBank' | 'cleanup' | 'curriculumScope' | 'facilitatorAccount';
 
 interface ManagementTabsProps {
   activeTab: ManagementTabType;
@@ -14,6 +15,7 @@ const ManagementTabs: React.FC<ManagementTabsProps> = ({ activeTab, setActiveTab
     { id: 'scoreEntry', label: 'Score Entry' },
     { id: 'facilitatorDesk', label: 'Attendance & Conduct' },
     { id: 'curriculumScope', label: 'Scope Tracker' },
+    { id: 'facilitatorAccount', label: 'Instructional Vault', facilitatorOnly: true },
     { id: 'questionsBank', label: 'Questions Bank' },
     { id: 'likelyQuestions', label: 'Submit Likely Qs' },
     { id: 'enrolmentForward', label: isFacilitator ? 'Payroll Status' : 'Enrolment Forwarding' },
@@ -27,7 +29,10 @@ const ManagementTabs: React.FC<ManagementTabsProps> = ({ activeTab, setActiveTab
     { id: 'grading', label: 'Grading', adminOnly: true },
     { id: 'history', label: 'History', adminOnly: true },
     { id: 'resources', label: 'Resources' }
-  ].filter(t => !isFacilitator || !t.adminOnly);
+  ].filter(t => {
+    if (isFacilitator) return !t.adminOnly;
+    return !t.facilitatorOnly;
+  });
 
   return (
     <div className="flex border-b border-gray-100 bg-gray-50 overflow-x-auto no-scrollbar sticky top-0 z-30 shadow-sm">

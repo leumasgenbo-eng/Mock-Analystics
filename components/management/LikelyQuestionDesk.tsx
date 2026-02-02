@@ -4,7 +4,7 @@ import { MasterQuestion, BloomsScale, StaffRewardTrade, StaffAssignment } from '
 import { supabase } from '../../supabaseClient';
 
 interface LikelyQuestionDeskProps {
-  activeFacilitator?: { name: string; subject: string; email?: string } | null;
+  activeFacilitator?: StaffAssignment | null;
   schoolName?: string;
   subjects?: string[];
   facilitators?: Record<string, StaffAssignment>;
@@ -22,7 +22,7 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
 }) => {
   const [questions, setQuestions] = useState<MasterQuestion[]>([]);
   
-  const [targetSubject, setTargetSubject] = useState(activeFacilitator?.subject || subjects[0] || 'English Language');
+  const [targetSubject, setTargetSubject] = useState(activeFacilitator?.taughtSubject || subjects[0] || 'English Language');
   const [targetFacilitatorName, setTargetFacilitatorName] = useState(activeFacilitator?.name || 'ADMINISTRATOR');
 
   const [formData, setFormData] = useState({
@@ -47,7 +47,7 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
 
   useEffect(() => {
     if (activeFacilitator) {
-      setTargetSubject(activeFacilitator.subject);
+      setTargetSubject(activeFacilitator.taughtSubject || '');
       setTargetFacilitatorName(activeFacilitator.name);
     }
   }, [activeFacilitator]);
@@ -104,7 +104,6 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
     const sanitizedSubject = targetSubject.trim().replace(/\s+/g, '');
     const sanitizedName = targetFacilitatorName.trim().replace(/\s+/g, '');
     
-    {/* Fix: Cast Object.values to StaffAssignment[] to resolve property access on 'f' and 'facilitatorRecord' */}
     const facilitatorRecord = (Object.values(facilitators) as StaffAssignment[]).find(f => f.name === targetFacilitatorName);
     const hubId = facilitatorRecord?.email ? sanitizedName : 'HUB_NODE';
 
@@ -121,6 +120,13 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
     };
 
     try {
+      // Award Tokens: 1 Submitted = 5 Tokens
+      if (facilitatorRecord) {
+        facilitatorRecord.account = facilitatorRecord.account || { meritTokens: 0, monetaryCredits: 0, totalSubmissions: 0, unlockedQuestionIds: [] };
+        facilitatorRecord.account.meritTokens += 5;
+        facilitatorRecord.account.totalSubmissions += 1;
+      }
+
       const nextPersonalQs = [...questions, newQ];
       await supabase.from('uba_persistence').upsert({
          id: `likely_${sanitizedSubject}_${sanitizedName}`,
@@ -153,7 +159,7 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
       });
 
       if (untradedCount + 1 >= 5) setShowTradePopup(true);
-      else alert(`Instructional shard mirrored to cloud master bank.`);
+      else alert(`Instructional shard mirrored to cloud master bank. 5 Merit Tokens awarded.`);
     } catch (error) {
       console.error("Cloud Sync Error:", error);
       alert("Handshake Interrupted.");
@@ -168,8 +174,15 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
     const sanitizedSubject = targetSubject.trim().replace(/\s+/g, '');
     const sanitizedName = targetFacilitatorName.trim().replace(/\s+/g, '');
     
-    {/* Fix: Cast Object.values to StaffAssignment[] to resolve property access on 'f' and 'facilitatorRecord' */}
     const facilitatorRecord = (Object.values(facilitators) as StaffAssignment[]).find(f => f.name === targetFacilitatorName);
+
+    // Trade Logic: 10 Questions = 1 GHS (So 5 questions = 0.5 GHS)
+    const monetaryValue = (untraded.length / 10);
+
+    if (facilitatorRecord) {
+       facilitatorRecord.account = facilitatorRecord.account || { meritTokens: 0, monetaryCredits: 0, totalSubmissions: 0, unlockedQuestionIds: [] };
+       facilitatorRecord.account.monetaryCredits += monetaryValue;
+    }
 
     const tradeRequest: StaffRewardTrade = {
       id: `TR-${Date.now()}`,
@@ -204,14 +217,13 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
 
       setQuestions(updatedQs);
       setShowTradePopup(false);
-      alert(`TRADE EXECUTED.`);
+      alert(`TRADE EXECUTED. GHS ${monetaryValue.toFixed(2)} credited to vault.`);
     } catch (e) {
       alert("Trade failed.");
     }
   };
 
   const currentFacilitators = useMemo(() => {
-    {/* Fix: Cast Object.values to StaffAssignment[] to resolve property access on 'f' */}
     return (Object.values(facilitators) as StaffAssignment[]).filter(f => f.taughtSubject === targetSubject || !f.taughtSubject);
   }, [facilitators, targetSubject]);
 
@@ -223,10 +235,10 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
            <div className="bg-white rounded-[3.5rem] p-12 max-w-lg w-full shadow-2xl border border-gray-100 text-center space-y-8 animate-in zoom-in-95">
               <div className="w-24 h-24 bg-emerald-500 text-white rounded-[2rem] flex items-center justify-center mx-auto shadow-lg text-4xl font-black">5</div>
               <div className="space-y-2">
-                 <h3 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Milestone Reached</h3>
+                 <h3 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Trade Milestone</h3>
                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.4em]">Credit Eligibility Verified</p>
               </div>
-              <p className="text-sm font-medium text-slate-600 leading-relaxed italic">You have contributed 5 instructional shards for {targetFacilitatorName}. Trade this pack now for HQ valuation?</p>
+              <p className="text-sm font-medium text-slate-600 leading-relaxed italic">You have contributed 5 instructional shards for {targetFacilitatorName}. Trade this pack now for GHS 0.50 (1 GHS per 10 Qs)?</p>
               <div className="flex gap-4">
                  <button onClick={() => setShowTradePopup(false)} className="flex-1 py-4 rounded-2xl font-black text-[10px] uppercase text-slate-400 hover:text-slate-900 transition-colors">Discard</button>
                  <button onClick={handleExecuteTrade} className="flex-1 bg-blue-900 text-white py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl hover:bg-black transition-all">Initiate Trade</button>
@@ -268,7 +280,6 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
                        const sub = e.target.value;
                        setTargetSubject(sub);
                        if (isAdmin) {
-                         {/* Fix: Cast Object.values to StaffAssignment[] to resolve property access on 'f' */}
                          const match = (Object.values(facilitators) as StaffAssignment[]).find(f => f.taughtSubject === sub);
                          if (match) setTargetFacilitatorName(match.name);
                          else setTargetFacilitatorName('ADMINISTRATOR');

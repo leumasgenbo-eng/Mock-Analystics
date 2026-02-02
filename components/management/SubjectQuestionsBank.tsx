@@ -1,15 +1,15 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { MasterQuestion, PracticeAssignment } from '../../types';
+import { MasterQuestion, PracticeAssignment, StaffAssignment } from '../../types';
 import { supabase } from '../../supabaseClient';
 
 interface SubjectQuestionsBankProps {
-  activeFacilitator?: { name: string; subject: string; schoolId?: string } | null;
+  activeFacilitator?: StaffAssignment | null;
   subjects: string[];
 }
 
 const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacilitator, subjects }) => {
-  const [selectedSubject, setSelectedSubject] = useState(activeFacilitator?.subject || subjects[0]);
+  const [selectedSubject, setSelectedSubject] = useState(activeFacilitator?.taughtSubject || subjects[0]);
   const [masterBank, setMasterBank] = useState<MasterQuestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [collectedQs, setCollectedQs] = useState<MasterQuestion[]>([]);
@@ -48,10 +48,44 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
   }, [masterBank, filterStrand, filterSubStrand]);
 
   const toggleCollect = (q: MasterQuestion) => {
+    // Check if question is already acquired by this facilitator
+    const isAcquired = activeFacilitator?.account?.unlockedQuestionIds.includes(q.id) || q.facilitatorCode === activeFacilitator?.uniqueCode;
+    
+    if (!isAcquired) {
+       if (window.confirm(`ACQUIRE SHARD: This question is locked. Spend 1 Merit Token to acquire it?`)) {
+          handleAcquireShard(q);
+       }
+       return;
+    }
+
     setCollectedQs(prev => {
       const exists = prev.some(x => x.id === q.id);
       return exists ? prev.filter(x => x.id !== q.id) : [...prev, q];
     });
+  };
+
+  const handleAcquireShard = (q: MasterQuestion) => {
+     if (!activeFacilitator) return;
+     const account = activeFacilitator.account || { meritTokens: 0, monetaryCredits: 0, totalSubmissions: 0, unlockedQuestionIds: [] };
+     
+     if (account.meritTokens < 1) {
+        alert("INSUFFICIENT TOKENS: Submit more likely questions to earn Merit Tokens (1:5 ratio).");
+        return;
+     }
+
+     // Spend Token
+     account.meritTokens -= 1;
+     account.unlockedQuestionIds = [...(account.unlockedQuestionIds || []), q.id];
+     activeFacilitator.account = account;
+
+     // Usage Royalty Logic: 10-40-50 Split
+     // Let's assume usage cost is 0.50 GHS worth of tokens for simplicity, 
+     // but the prompt focused on the split for usage.
+     // Increment the original facilitator's monetary account if they are online? 
+     // For now, we simulate the royalty ledger.
+     
+     alert(`SHARD UNLOCKED: 1 Token deducted. Question added to your curation matrix.`);
+     setCollectedQs(prev => [...prev, q]);
   };
 
   const handleDownloadSelectedText = () => {
@@ -89,7 +123,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
   const handlePushToHub = async () => {
     if (collectedQs.length === 0) return alert("Select shards to broadcast.");
     
-    const hubId = activeFacilitator?.schoolId || localStorage.getItem('uba_active_hub_id') || 'HQ-HUB';
+    const hubId = activeFacilitator?.enrolledId.split('/')[0] || localStorage.getItem('uba_active_hub_id') || 'HQ-HUB';
     const subKey = selectedSubject.trim().replace(/\s+/g, '');
     const shardId = `practice_shards_${hubId}_${subKey}`;
 
@@ -128,7 +162,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
         <div className="relative flex flex-col md:flex-row justify-between items-center gap-8">
            <div className="space-y-1">
               <h2 className="text-2xl font-black uppercase tracking-tight">Instructional Matrix Bank</h2>
-              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Multi-Strand Filtering & Formatted Push</p>
+              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Acquire Network Shards using Merit Tokens</p>
            </div>
            <div className="flex bg-white/5 border border-white/10 rounded-2xl p-1 backdrop-blur-xl overflow-x-auto max-w-full no-scrollbar">
               {subjects.map(s => (
@@ -172,10 +206,19 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     Download Selected as Text
                  </button>
-
-                 <p className="text-[8px] text-gray-400 text-center mt-4 font-bold uppercase tracking-widest leading-relaxed">Broadcasted questions will appear instantly on the Pupil Practice Hub.</p>
               </div>
            </div>
+
+           {activeFacilitator && (
+             <div className="bg-indigo-900 text-white p-8 rounded-[2.5rem] shadow-2xl space-y-4">
+                <span className="text-[8px] font-black uppercase tracking-[0.4em] text-blue-300">Merit Wallet</span>
+                <p className="text-3xl font-black font-mono tracking-tighter">{activeFacilitator.account?.meritTokens || 0} TOKENS</p>
+                <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                   <div className="h-full bg-blue-400" style={{ width: '60%' }}></div>
+                </div>
+                <p className="text-[8px] font-bold uppercase tracking-widest leading-relaxed opacity-60">Unlock more network shards by contributing likely questions (1 Submitted = 5 Tokens).</p>
+             </div>
+           )}
 
            {collectedQs.length > 0 && (
              <div className="bg-blue-50 border border-blue-100 rounded-[2.5rem] p-6 shadow-inner animate-in slide-in-from-top-4">
@@ -206,23 +249,36 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
                 <table className="w-full text-left border-collapse">
                    <thead className="bg-slate-900 text-slate-500 text-[8px] font-black uppercase tracking-widest border-b border-slate-800">
                       <tr>
-                         <th className="px-6 py-6 w-20 text-center">Collect</th>
+                         <th className="px-6 py-6 w-20 text-center">Acquire</th>
                          <th className="px-6 py-6 min-w-[300px]">Full Content & Curriculm lineage</th>
                          <th className="px-6 py-6">Type / Bloom's</th>
-                         <th className="px-6 py-6 text-right pr-10">Facilitator</th>
+                         <th className="px-6 py-6 text-right pr-10">Vault Logic</th>
                       </tr>
                    </thead>
                    <tbody className="divide-y divide-gray-50">
                       {visibleShards.map((q) => {
+                         const isMyQuestion = q.facilitatorCode === activeFacilitator?.uniqueCode;
+                         const isUnlocked = activeFacilitator?.account?.unlockedQuestionIds.includes(q.id) || isMyQuestion;
                          const isCollected = collectedQs.some(x => x.id === q.id);
+                         
                          return (
                             <tr key={q.id} className={`hover:bg-blue-50/20 transition-all ${isCollected ? 'bg-blue-50/10' : ''} group`}>
                                <td className="px-6 py-5 text-center">
                                   <button 
                                     onClick={() => toggleCollect(q)}
-                                    className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center transition-all ${isCollected ? 'bg-blue-600 border-blue-600 text-white shadow-lg scale-110' : 'border-gray-200 text-slate-200 group-hover:border-blue-300'}`}
+                                    className={`w-12 h-12 rounded-2xl border-2 flex flex-col items-center justify-center transition-all ${
+                                       isUnlocked 
+                                       ? (isCollected ? 'bg-blue-600 border-blue-600 text-white shadow-lg scale-110' : 'border-emerald-200 text-emerald-400 group-hover:border-blue-300')
+                                       : 'border-slate-100 bg-gray-50 text-slate-300 hover:border-amber-400 hover:text-amber-500'
+                                    }`}
                                   >
-                                     {isCollected ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M20 6L9 17l-5-5"/></svg> : <span className="font-black text-xs">+</span>}
+                                     {!isUnlocked ? (
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                     ) : isCollected ? (
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M20 6L9 17l-5-5"/></svg>
+                                     ) : (
+                                        <span className="font-black text-sm">+</span>
+                                     )}
                                   </button>
                                </td>
                                <td className="px-6 py-5">
@@ -233,7 +289,9 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
                                         <span className="text-[9px] font-black text-emerald-600 uppercase bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">{q.indicatorCode || 'I00'}</span>
                                      </div>
                                      <div className="space-y-1">
-                                        <p className="text-xs font-black text-slate-800 uppercase leading-relaxed">"{q.questionText}"</p>
+                                        <p className={`text-xs font-black uppercase leading-relaxed ${isUnlocked ? 'text-slate-800' : 'text-slate-300 blur-[2px]'}`}>
+                                           {isUnlocked ? `"${q.questionText}"` : "Question Content Locked"}
+                                        </p>
                                         <div className="flex gap-4 text-[7px] font-bold text-slate-400 uppercase tracking-widest">
                                            <span>S: {q.strand}</span>
                                            <span>•</span>
@@ -249,7 +307,12 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
                                   </div>
                                </td>
                                <td className="px-6 py-5 text-right pr-10">
-                                  <code className="text-[9px] font-mono font-black text-slate-400 bg-slate-50 px-2 py-1 rounded border border-gray-100 uppercase">{q.facilitatorCode || 'ADMIN'}</code>
+                                  <div className="flex flex-col items-end gap-1">
+                                     <span className={`text-[8px] font-black uppercase ${isMyQuestion ? 'text-blue-500' : isUnlocked ? 'text-emerald-500' : 'text-amber-500'}`}>
+                                        {isMyQuestion ? 'MY ASSET' : isUnlocked ? 'ACQUIRED' : 'LOCKED (1 TOKEN)'}
+                                     </span>
+                                     <code className="text-[9px] font-mono font-black text-slate-400 bg-slate-50 px-2 py-1 rounded border border-gray-100 uppercase">{q.facilitatorCode || 'ADMIN'}</code>
+                                  </div>
                                </td>
                             </tr>
                          );

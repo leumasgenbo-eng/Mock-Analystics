@@ -69,10 +69,12 @@ const App: React.FC = () => {
   const [activeRole, setActiveRole] = useState<string | null>(localStorage.getItem('uba_active_role'));
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [activePupil, setActivePupil] = useState<ProcessedStudent | null>(null);
-  const [activeFacilitator, setActiveFacilitator] = useState<{ name: string; subject: string } | null>(null);
+  // Fix: Updated activeFacilitator type to include email for ManagementDesk sub-module requirements
+  const [activeFacilitator, setActiveFacilitator] = useState<{ name: string; subject: string; email?: string } | null>(null);
   const [isRegistering, setIsRegistering] = useState(false);
   
-  const [loggedInUser, setLoggedInUser] = useState<{ name: string; nodeId: string } | null>(null);
+  // Fix: Updated loggedInUser state type to match extended identity context from LoginPortal
+  const [loggedInUser, setLoggedInUser] = useState<{ name: string; nodeId: string; role: string; email?: string; subject?: string } | null>(null);
   const [globalRegistry, setGlobalRegistry] = useState<SchoolRegistryEntry[]>([]);
   const [settings, setSettings] = useState<GlobalSettings>(DEFAULT_SETTINGS);
   const [students, setStudents] = useState<StudentData[]>([]); 
@@ -122,7 +124,8 @@ const App: React.FC = () => {
         } else if (currentHubId) {
           const cloudData = await syncCloudShards(currentHubId);
           if (user.role === 'facilitator') {
-            setActiveFacilitator({ name: user.name, subject: user.subject || "GENERAL" });
+            // Fix: Propagate email to activeFacilitator simplified object
+            setActiveFacilitator({ name: user.name, subject: user.subject || "GENERAL", email: user.email });
           } else if (user.role === 'pupil' && cloudData) {
             const s = calculateClassStatistics(cloudData.students, cloudData.settings);
             const processed = processStudentData(s, cloudData.students, {}, cloudData.settings);
@@ -249,6 +252,7 @@ const App: React.FC = () => {
             {processedStudents.filter(s=>(s.name||"").toLowerCase().includes(reportSearchTerm.toLowerCase())).map(s=><ReportCard key={s.id} student={s} stats={stats} settings={settings} onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} classAverageAggregate={classAvgAggregate} totalEnrolled={processedStudents.length} isFacilitator={isFacilitatorMode} />)}
           </div>
         )}
+        {/* Fix: activeFacilitator simplified object now correctly matches ManagementDesk prop type */}
         {viewMode==='management' && <ManagementDesk students={students} setStudents={setStudents} facilitators={facilitators} setFacilitators={setFacilitators} subjects={SUBJECT_LIST} settings={settings} onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} onBulkUpdate={(u)=>setSettings(p=>({...p,...u}))} onSave={handleSaveAll} processedSnapshot={processedStudents} onLoadDummyData={()=>{}} onClearData={()=>{}} isFacilitator={isFacilitatorMode} activeFacilitator={activeFacilitator} loggedInUser={loggedInUser} />}
       </div>
     </div>

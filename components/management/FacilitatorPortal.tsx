@@ -48,6 +48,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         unique_code: uniqueCode
       });
 
+      // Fix: Added default account structure to satisfy StaffAssignment interface requirements
       const staff: StaffAssignment = {
         name: targetName,
         email: targetEmail,
@@ -57,6 +58,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         uniqueCode: uniqueCode,
         enrolledId: nodeId, 
         invigilations: createEmptyRegister(),
+        account: { meritTokens: 0, monetaryCredits: 0, totalSubmissions: 0, unlockedQuestionIds: [] },
         marking: { dateTaken: '', dateReturned: '', inProgress: false }
       };
 
@@ -124,7 +126,6 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       </section>
 
       <div className="grid grid-cols-1 gap-8">
-        {/* Fix: Cast Object.values to StaffAssignment[] to resolve property access on 'f' inside map */}
         {(Object.values(facilitators) as StaffAssignment[]).map((f) => {
           const isExpanded = expandedStaff === f.email;
           return (

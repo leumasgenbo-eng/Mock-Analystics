@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { supabase } from '../../supabaseClient';
 
 interface LoginPortalProps {
-  onLoginSuccess: (hubId: string, user: { name: string, nodeId: string, role: string, subject?: string }) => void;
+  onLoginSuccess: (hubId: string, user: { name: string, nodeId: string, role: string, email: string, subject?: string }) => void;
   onSuperAdminLogin: () => void;
   onSwitchToRegister: () => void;
 }
@@ -76,10 +76,12 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
       }
 
       // 5. SUCCESSFUL LOGIN
+      // Added email to return object to facilitate full StaffAssignment lookup
       onLoginSuccess(identity.hub_id, {
         name: identity.full_name,
         nodeId: identity.node_id,
         role: identity.role,
+        email: identity.email,
         subject: identity.role === 'facilitator' ? (identity.teaching_category || 'GENERAL') : undefined
       });
 

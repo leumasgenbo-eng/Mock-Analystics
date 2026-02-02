@@ -19,6 +19,7 @@ import RewardPortal from './RewardPortal';
 import SchoolCredentialView from './SchoolCredentialView';
 import DataCleanupPortal from './DataCleanupPortal';
 import CurriculumCoveragePortal from './CurriculumCoveragePortal';
+import FacilitatorAccountHub from './FacilitatorAccountHub';
 
 // Extracted UI Layout components
 import ManagementHeader from './ManagementHeader';
@@ -38,7 +39,8 @@ interface ManagementDeskProps {
   onLoadDummyData: () => void;
   onClearData: () => void;
   isFacilitator?: boolean;
-  activeFacilitator?: { name: string; subject: string } | null;
+  // Fix: activeFacilitator now typed as simplified identity object expected by core sub-portals
+  activeFacilitator?: { name: string; subject: string; email?: string } | null;
   loggedInUser?: { name: string; nodeId: string } | null;
 }
 
@@ -95,10 +97,15 @@ const ManagementDesk: React.FC<ManagementDeskProps> = ({
               subjects={subjects} 
               processedSnapshot={processedSnapshot} 
               onSave={onSave}
+              // Fix: activeFacilitator simplified shape matches ScoreEntryPortal requirement
               activeFacilitator={activeFacilitator}
             />
           )}
           {activeTab === 'facilitatorDesk' && <FacilitatorDesk students={students} setStudents={setStudents} settings={settings} onSettingChange={onSettingChange} onSave={onSave} />}
+          {/* Fix: Resolved full StaffAssignment record for account view using dictionary lookup */}
+          {activeTab === 'facilitatorAccount' && activeFacilitator?.email && facilitators[activeFacilitator.email] && (
+            <FacilitatorAccountHub activeFacilitator={facilitators[activeFacilitator.email]} settings={settings} />
+          )}
           {activeTab === 'curriculumScope' && (
              <CurriculumCoveragePortal 
                settings={settings} 
@@ -111,14 +118,21 @@ const ManagementDesk: React.FC<ManagementDeskProps> = ({
           )}
           {activeTab === 'likelyQuestions' && (
             <LikelyQuestionDesk 
-              activeFacilitator={activeFacilitator} 
+              // Fix: Passed full record to LikelyQuestionDesk using email lookup
+              activeFacilitator={activeFacilitator?.email ? facilitators[activeFacilitator.email] : null} 
               schoolName={settings.schoolName} 
               subjects={subjects} 
               facilitators={facilitators} 
               isAdmin={!isFacilitator}
             />
           )}
-          {activeTab === 'questionsBank' && <SubjectQuestionsBank activeFacilitator={activeFacilitator} subjects={subjects} />}
+          {activeTab === 'questionsBank' && (
+            <SubjectQuestionsBank 
+              // Fix: Passed full record to SubjectQuestionsBank using email lookup
+              activeFacilitator={activeFacilitator?.email ? facilitators[activeFacilitator.email] : null} 
+              subjects={subjects} 
+            />
+          )}
           {activeTab === 'enrolmentForward' && (
             <EnrolmentForwardingPortal 
               settings={settings} 
@@ -149,7 +163,17 @@ const ManagementDesk: React.FC<ManagementDeskProps> = ({
           )}
           {activeTab === 'credentials' && <SchoolCredentialView settings={settings} studentCount={students.length} />}
           {activeTab === 'pupils' && <PupilSBAPortal students={students} setStudents={setStudents} settings={settings} subjects={subjects} onSave={onSave} />}
-          {activeTab === 'facilitators' && <FacilitatorPortal subjects={subjects} facilitators={facilitators} setFacilitators={setFacilitators} settings={settings} onSave={onSave} isFacilitator={isFacilitator} activeFacilitator={activeFacilitator} />}
+          {activeTab === 'facilitators' && (
+            <FacilitatorPortal 
+              subjects={subjects} 
+              facilitators={facilitators} 
+              setFacilitators={setFacilitators} 
+              settings={settings} 
+              onSave={onSave} 
+              isFacilitator={isFacilitator} 
+              activeFacilitator={activeFacilitator} 
+            />
+          )}
           {activeTab === 'grading' && <GradingConfigPortal settings={settings} onSettingChange={onSettingChange} />}
           {activeTab === 'history' && <SeriesHistoryPortal students={students} settings={settings} />}
           {activeTab === 'resources' && <MockResourcesPortal settings={settings} onSettingChange={onSettingChange} subjects={subjects} />}

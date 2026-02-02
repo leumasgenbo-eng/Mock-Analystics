@@ -79,6 +79,13 @@ export interface InvigilationSlot {
   subject: string;
 }
 
+export interface StaffAccount {
+  meritTokens: number;      // Used for acquiring/buying questions
+  monetaryCredits: number;  // GHS value from trading or royalties
+  totalSubmissions: number;
+  unlockedQuestionIds: string[];
+}
+
 export interface StaffAssignment {
   name: string;
   email: string; 
@@ -88,6 +95,7 @@ export interface StaffAssignment {
   teachingCategory?: string;
   uniqueCode?: string;
   invigilations: InvigilationSlot[]; 
+  account: StaffAccount;
   marking: {
     dateTaken: string;
     dateReturned: string;
