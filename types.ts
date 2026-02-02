@@ -1,5 +1,4 @@
 
-
 export interface SubjectScore {
   subject: string;
   score: number;
@@ -74,7 +73,6 @@ export interface VerificationEntry {
 
 export type StaffRole = 'FACILITATOR' | 'INVIGILATOR' | 'EXAMINER' | 'CHIEF INVIGILATOR' | 'CHIEF EXAMINER' | 'SUPERVISOR' | 'OFFICER';
 
-// Fix: Added missing InvigilationSlot interface to resolve compilation errors
 export interface InvigilationSlot {
   dutyDate: string;
   timeSlot: string;
@@ -384,9 +382,14 @@ export interface MasterQuestion {
   id: string;
   originalIndex: number;
   type: 'OBJECTIVE' | 'THEORY';
+  subject: string;
   strand: string;
+  strandCode?: string;
   subStrand: string;
+  subStrandCode?: string;
   indicator: string;
+  indicatorCode?: string;
+  facilitatorCode?: string;
   questionText: string;
   instruction: string;
   correctKey: string;

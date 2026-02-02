@@ -22,15 +22,17 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
 }) => {
   const [questions, setQuestions] = useState<MasterQuestion[]>([]);
   
-  // Dynamic Attribution State
   const [targetSubject, setTargetSubject] = useState(activeFacilitator?.subject || subjects[0] || 'English Language');
   const [targetFacilitatorName, setTargetFacilitatorName] = useState(activeFacilitator?.name || 'ADMINISTRATOR');
 
   const [formData, setFormData] = useState({
     type: 'OBJECTIVE' as 'OBJECTIVE' | 'THEORY',
     strand: '',
+    strandCode: '',
     subStrand: '',
+    subStrandCode: '',
     indicator: '',
+    indicatorCode: '',
     questionText: '',
     instruction: '',
     correctKey: 'A',
@@ -43,7 +45,6 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [showTradePopup, setShowTradePopup] = useState(false);
 
-  // Sync target states if activeFacilitator changes
   useEffect(() => {
     if (activeFacilitator) {
       setTargetSubject(activeFacilitator.subject);
@@ -68,6 +69,33 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
 
   const untradedCount = useMemo(() => questions.filter(q => !q.isTraded).length, [questions]);
 
+  const handleDownloadText = () => {
+    if (questions.length === 0) return alert("No shards to download.");
+    let content = `LIKELY QUESTIONS RECORD - ${targetSubject.toUpperCase()}\n`;
+    content += `FACILITATOR: ${targetFacilitatorName}\n`;
+    content += `SCHOOL: ${schoolName || 'UBA'}\n`;
+    content += `DATE: ${new Date().toLocaleDateString()}\n`;
+    content += `==========================================\n\n`;
+
+    questions.forEach((q, i) => {
+      content += `[${i+1}] TYPE: ${q.type}\n`;
+      content += `STRAND: ${q.strand} (${q.strandCode || '---'})\n`;
+      content += `SUB-STRAND: ${q.subStrand} (${q.subStrandCode || '---'})\n`;
+      content += `INDICATOR: ${q.indicator} (${q.indicatorCode || '---'})\n`;
+      content += `QUESTION: ${q.questionText}\n`;
+      content += `KEY/SCHEME: ${q.correctKey || q.answerScheme}\n`;
+      content += `------------------------------------------\n\n`;
+    });
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `LikelyQs_${targetSubject.replace(/\s/g, '_')}_${targetFacilitatorName.replace(/\s/g, '_')}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.questionText.trim()) return;
@@ -76,14 +104,16 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
     const sanitizedSubject = targetSubject.trim().replace(/\s+/g, '');
     const sanitizedName = targetFacilitatorName.trim().replace(/\s+/g, '');
     
-    // Determine the hub ID for attribution
-    const facilitatorRecord = Object.values(facilitators).find(f => f.name === targetFacilitatorName);
+    {/* Fix: Cast Object.values to StaffAssignment[] to resolve property access on 'f' and 'facilitatorRecord' */}
+    const facilitatorRecord = (Object.values(facilitators) as StaffAssignment[]).find(f => f.name === targetFacilitatorName);
     const hubId = facilitatorRecord?.email ? sanitizedName : 'HUB_NODE';
 
     const newQ: MasterQuestion = {
       id: `LQ-${Date.now()}-${Math.random().toString(36).substring(7)}`,
       originalIndex: questions.length + 1,
       ...formData,
+      subject: targetSubject,
+      facilitatorCode: facilitatorRecord?.uniqueCode || 'ADMIN',
       isTraded: false,
       parts: formData.type === 'THEORY' ? [
         { partLabel: 'a.i', text: '', possibleAnswers: '', markingScheme: '', weight: 2, blooms: 'Knowledge' }
@@ -91,7 +121,6 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
     };
 
     try {
-      // 1. Save to Targeted Facilitator Shard
       const nextPersonalQs = [...questions, newQ];
       await supabase.from('uba_persistence').upsert({
          id: `likely_${sanitizedSubject}_${sanitizedName}`,
@@ -100,7 +129,6 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
          last_updated: new Date().toISOString()
       });
 
-      // 2. ATOMIC MERGE WITH MASTER BANK (HQ HUB Sync)
       const bankId = `master_bank_${sanitizedSubject}`;
       const { data: currentMaster } = await supabase
         .from('uba_persistence')
@@ -121,14 +149,14 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
 
       setQuestions(nextPersonalQs);
       setFormData({
-        type: formData.type, strand: formData.strand, subStrand: formData.subStrand, indicator: '', questionText: '', instruction: '', correctKey: 'A', answerScheme: '', weight: formData.type === 'OBJECTIVE' ? 1 : 10, blooms: 'Knowledge', diagramUrl: ''
+        ...formData, indicator: '', indicatorCode: '', questionText: '', instruction: '', correctKey: 'A', answerScheme: '', weight: formData.type === 'OBJECTIVE' ? 1 : 10, blooms: 'Knowledge', diagramUrl: ''
       });
 
       if (untradedCount + 1 >= 5) setShowTradePopup(true);
-      else alert(`Instructional shard mirrored to ${targetSubject} master bank attributed to ${targetFacilitatorName}.`);
+      else alert(`Instructional shard mirrored to cloud master bank.`);
     } catch (error) {
       console.error("Cloud Sync Error:", error);
-      alert("Handshake Interrupted. Retrying internal cache...");
+      alert("Handshake Interrupted.");
     } finally {
       setIsSyncing(false);
     }
@@ -140,8 +168,8 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
     const sanitizedSubject = targetSubject.trim().replace(/\s+/g, '');
     const sanitizedName = targetFacilitatorName.trim().replace(/\s+/g, '');
     
-    // Attempt to find email for the trade request
-    const facilitatorRecord = Object.values(facilitators).find(f => f.name === targetFacilitatorName);
+    {/* Fix: Cast Object.values to StaffAssignment[] to resolve property access on 'f' and 'facilitatorRecord' */}
+    const facilitatorRecord = (Object.values(facilitators) as StaffAssignment[]).find(f => f.name === targetFacilitatorName);
 
     const tradeRequest: StaffRewardTrade = {
       id: `TR-${Date.now()}`,
@@ -176,15 +204,15 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
 
       setQuestions(updatedQs);
       setShowTradePopup(false);
-      alert(`TRADE EXECUTED: Reward shard for ${targetFacilitatorName} submitted for valuation.`);
+      alert(`TRADE EXECUTED.`);
     } catch (e) {
-      alert("Trade process failed.");
+      alert("Trade failed.");
     }
   };
 
-  // Derive facilitators for the current selected subject
   const currentFacilitators = useMemo(() => {
-    return Object.values(facilitators).filter(f => f.taughtSubject === targetSubject || !f.taughtSubject);
+    {/* Fix: Cast Object.values to StaffAssignment[] to resolve property access on 'f' */}
+    return (Object.values(facilitators) as StaffAssignment[]).filter(f => f.taughtSubject === targetSubject || !f.taughtSubject);
   }, [facilitators, targetSubject]);
 
   return (
@@ -214,59 +242,57 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
               <h3 className="text-2xl font-black uppercase tracking-tight">Likely Question Desk</h3>
               <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-[0.4em]">Mirroring to Master Bank • Attribution: {targetFacilitatorName}</p>
            </div>
-           <div className="bg-white/10 px-6 py-4 rounded-[2rem] border border-white/10 flex items-center gap-6">
-              <div className="text-right">
-                 <span className="text-[8px] font-black text-blue-300 uppercase block mb-1">Untraded Shards</span>
-                 <p className="text-xl font-black font-mono">{untradedCount} / 5</p>
-              </div>
-              <div className="w-px h-8 bg-white/10"></div>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${untradedCount >= 5 ? 'bg-emerald-500 animate-pulse' : 'bg-white/10 text-white/20'}`}>
-                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+           <div className="flex gap-4">
+              <button onClick={handleDownloadText} className="bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-2xl font-black text-[9px] uppercase border border-white/10 transition-all flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download Text
+              </button>
+              <div className="bg-white/10 px-6 py-3 rounded-2xl border border-white/10 flex items-center gap-4">
+                 <span className="text-[10px] font-mono font-black text-blue-300 uppercase">Shards: {untradedCount}/5</span>
+                 <div className={`w-3 h-3 rounded-full ${untradedCount >= 5 ? 'bg-emerald-500 animate-pulse' : 'bg-white/20'}`}></div>
               </div>
            </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-         <form onSubmit={handleSubmit} className="lg:col-span-5 bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-xl space-y-6">
-            
-            {/* Attribution Selection Section */}
+         <form onSubmit={handleSubmit} className="lg:col-span-6 bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-xl space-y-6">
             <div className="bg-slate-50 p-6 rounded-3xl border border-gray-100 space-y-4">
-              <h4 className="text-[9px] font-black text-indigo-600 uppercase tracking-widest border-b border-indigo-100 pb-2">Instructional Attribution</h4>
-              <div className="grid grid-cols-1 gap-4">
+              <h4 className="text-[9px] font-black text-indigo-600 uppercase tracking-widest border-b border-indigo-100 pb-2">Institutional Attribution</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Target Subject</label>
+                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Subject</label>
                    <select 
                      value={targetSubject} 
                      onChange={e => {
                        const sub = e.target.value;
                        setTargetSubject(sub);
-                       // If admin, auto-switch facilitator if current one doesn't match subject
                        if (isAdmin) {
-                         const match = Object.values(facilitators).find(f => f.taughtSubject === sub);
+                         {/* Fix: Cast Object.values to StaffAssignment[] to resolve property access on 'f' */}
+                         const match = (Object.values(facilitators) as StaffAssignment[]).find(f => f.taughtSubject === sub);
                          if (match) setTargetFacilitatorName(match.name);
                          else setTargetFacilitatorName('ADMINISTRATOR');
                        }
                      }} 
-                     className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[10px] font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all uppercase"
+                     className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2 text-[10px] font-black outline-none uppercase"
                      disabled={!isAdmin}
                    >
                      {subjects.map(s => <option key={s} value={s}>{s}</option>)}
                    </select>
                 </div>
                 <div className="space-y-1">
-                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Lead Facilitator Credence</label>
+                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Lead Facilitator</label>
                    {isAdmin ? (
                      <select 
                         value={targetFacilitatorName} 
                         onChange={e => setTargetFacilitatorName(e.target.value)} 
-                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[10px] font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all uppercase"
+                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2 text-[10px] font-black outline-none uppercase"
                      >
                         <option value="ADMINISTRATOR">ADMINISTRATOR (GENERAL)</option>
                         {currentFacilitators.map(f => <option key={f.email} value={f.name}>{f.name}</option>)}
                      </select>
                    ) : (
-                     <div className="w-full bg-gray-200 border border-gray-300 rounded-xl px-4 py-2.5 text-[10px] font-black text-gray-600 uppercase">
+                     <div className="w-full bg-gray-200 border border-gray-300 rounded-xl px-4 py-2 text-[10px] font-black text-gray-600 uppercase">
                         {targetFacilitatorName}
                      </div>
                    )}
@@ -274,44 +300,74 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
               </div>
             </div>
 
-            <div className="flex justify-between items-center">
-              <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Shard Entry Matrix</h4>
-              <div className="flex gap-2">
-                 <button type="button" onClick={() => setFormData({...formData, type: 'OBJECTIVE', weight: 1})} className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase ${formData.type === 'OBJECTIVE' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}>Objective</button>
-                 <button type="button" onClick={() => setFormData({...formData, type: 'THEORY', weight: 10})} className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase ${formData.type === 'THEORY' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-400'}`}>Theory</button>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-               <input type="text" placeholder="CURRICULUM STRAND..." value={formData.strand} onChange={e=>setFormData({...formData, strand: e.target.value})} className="w-full bg-slate-50 border border-gray-100 rounded-xl px-5 py-3 text-[10px] font-bold outline-none uppercase" required />
-               <input type="text" placeholder="SUB-STRAND..." value={formData.subStrand} onChange={e=>setFormData({...formData, subStrand: e.target.value})} className="w-full bg-slate-50 border border-gray-100 rounded-xl px-5 py-3 text-[10px] font-bold outline-none uppercase" required />
-               <input type="text" placeholder="INDICATOR CODE..." value={formData.indicator} onChange={e=>setFormData({...formData, indicator: e.target.value})} className="w-full bg-slate-50 border border-gray-100 rounded-xl px-5 py-3 text-[10px] font-bold outline-none uppercase" required />
-               <textarea placeholder="QUESTION CONTENT..." value={formData.questionText} onChange={e=>setFormData({...formData, questionText: e.target.value})} className="w-full bg-slate-50 border border-gray-100 rounded-xl px-5 py-4 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/10 min-h-[120px] uppercase" required />
-               <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+               <div className="space-y-4">
                   <div className="space-y-1">
-                     <label className="text-[8px] font-black text-slate-500 uppercase ml-2">Correct Key</label>
-                     <select value={formData.correctKey} onChange={e=>setFormData({...formData, correctKey: e.target.value})} className="w-full bg-slate-50 border border-gray-100 rounded-xl px-4 py-2.5 text-[10px] font-black outline-none" disabled={formData.type === 'THEORY'}>
-                        <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
-                     </select>
+                    <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Strand Name & Code</label>
+                    <div className="flex gap-2">
+                       <input type="text" placeholder="STRAND..." value={formData.strand} onChange={e=>setFormData({...formData, strand: e.target.value.toUpperCase()})} className="flex-1 bg-slate-50 border rounded-xl px-4 py-2 text-[10px] font-bold uppercase" required />
+                       <input type="text" placeholder="CODE" value={formData.strandCode} onChange={e=>setFormData({...formData, strandCode: e.target.value.toUpperCase()})} className="w-20 bg-slate-50 border rounded-xl px-4 py-2 text-[10px] font-black text-blue-600 uppercase" />
+                    </div>
                   </div>
                   <div className="space-y-1">
-                     <label className="text-[8px] font-black text-slate-500 uppercase ml-2">Bloom's</label>
-                     <select value={formData.blooms} onChange={e=>setFormData({...formData, blooms: e.target.value as BloomsScale})} className="w-full bg-slate-50 border border-gray-100 rounded-xl px-4 py-2.5 text-[10px] font-black outline-none">
-                        {BLOOMS.map(b => <option key={b} value={b}>{b}</option>)}
-                     </select>
+                    <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Sub-Strand Name & Code</label>
+                    <div className="flex gap-2">
+                       <input type="text" placeholder="SUB-STRAND..." value={formData.subStrand} onChange={e=>setFormData({...formData, subStrand: e.target.value.toUpperCase()})} className="flex-1 bg-slate-50 border rounded-xl px-4 py-2 text-[10px] font-bold uppercase" required />
+                       <input type="text" placeholder="CODE" value={formData.subStrandCode} onChange={e=>setFormData({...formData, subStrandCode: e.target.value.toUpperCase()})} className="w-20 bg-slate-50 border rounded-xl px-4 py-2 text-[10px] font-black text-blue-600 uppercase" />
+                    </div>
+                  </div>
+               </div>
+               <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Indicator & Code</label>
+                    <div className="flex gap-2">
+                       <input type="text" placeholder="INDICATOR..." value={formData.indicator} onChange={e=>setFormData({...formData, indicator: e.target.value.toUpperCase()})} className="flex-1 bg-slate-50 border rounded-xl px-4 py-2 text-[10px] font-bold uppercase" required />
+                       <input type="text" placeholder="CODE" value={formData.indicatorCode} onChange={e=>setFormData({...formData, indicatorCode: e.target.value.toUpperCase()})} className="w-20 bg-slate-50 border rounded-xl px-4 py-2 text-[10px] font-black text-indigo-600 uppercase" required />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                     <div className="space-y-1">
+                        <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Type</label>
+                        <select value={formData.type} onChange={e=>setFormData({...formData, type: e.target.value as any, weight: e.target.value === 'OBJECTIVE' ? 1 : 10})} className="w-full bg-slate-50 border rounded-xl px-4 py-2 text-[10px] font-black">
+                           <option value="OBJECTIVE">OBJECTIVE</option>
+                           <option value="THEORY">THEORY</option>
+                        </select>
+                     </div>
+                     <div className="space-y-1">
+                        <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Bloom's</label>
+                        <select value={formData.blooms} onChange={e=>setFormData({...formData, blooms: e.target.value as BloomsScale})} className="w-full bg-slate-50 border rounded-xl px-4 py-2 text-[10px] font-black">
+                           {BLOOMS.map(b => <option key={b} value={b}>{b}</option>)}
+                        </select>
+                     </div>
                   </div>
                </div>
             </div>
 
+            <div className="space-y-1">
+               <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Question Content</label>
+               <textarea placeholder="ENTER CONTENT..." value={formData.questionText} onChange={e=>setFormData({...formData, questionText: e.target.value})} className="w-full bg-slate-50 border border-gray-100 rounded-xl px-5 py-4 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/10 min-h-[100px] uppercase" required />
+            </div>
+
+            <div className="space-y-1">
+               <label className="text-[8px] font-black text-slate-400 uppercase ml-2">{formData.type === 'OBJECTIVE' ? 'Correct Key' : 'Full Marking Scheme / Rubric'}</label>
+               {formData.type === 'OBJECTIVE' ? (
+                  <select value={formData.correctKey} onChange={e=>setFormData({...formData, correctKey: e.target.value})} className="w-full bg-slate-50 border border-gray-100 rounded-xl px-4 py-3 text-[10px] font-black outline-none">
+                     <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
+                  </select>
+               ) : (
+                  <textarea placeholder="ENTER RUBRIC..." value={formData.answerScheme} onChange={e=>setFormData({...formData, answerScheme: e.target.value})} className="w-full bg-slate-50 border border-gray-100 rounded-xl px-5 py-4 text-xs font-bold text-slate-700 outline-none min-h-[80px] uppercase" required />
+               )}
+            </div>
+
             <button type="submit" disabled={isSyncing} className="w-full bg-indigo-900 text-white py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-xl transition-all active:scale-95 disabled:opacity-50">
-               {isSyncing ? 'Synchronizing Node...' : 'Submit to Master Hub'}
+               {isSyncing ? 'Mirroring to Hub...' : 'Sync to Cloud Hub'}
             </button>
          </form>
 
-         <div className="lg:col-span-7 bg-slate-50 rounded-[2.5rem] border border-gray-100 shadow-inner flex flex-col overflow-hidden">
+         <div className="lg:col-span-6 bg-slate-50 rounded-[2.5rem] border border-gray-100 shadow-inner flex flex-col overflow-hidden">
             <div className="p-6 bg-white border-b border-gray-100 flex justify-between items-center">
                <div className="space-y-1">
-                  <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Active Attribution Stream</h4>
+                  <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Active Submission Stream</h4>
                   <p className="text-[9px] font-bold text-blue-600 uppercase">{targetSubject} • {targetFacilitatorName}</p>
                </div>
                <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">{questions.length} Shards</span>
@@ -321,10 +377,10 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
                   <div key={q.id} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-4 relative group">
                      <div className="flex justify-between items-start">
                         <div className="space-y-1">
-                           <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">{q.strand} → {q.indicator}</span>
+                           <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">{q.strandCode || q.strand} → {q.indicatorCode || q.indicator}</span>
                            <div className="flex items-center gap-2">
                              <span className={`text-[8px] font-black px-2 py-0.5 rounded uppercase ${q.type === 'OBJECTIVE' ? 'bg-blue-100 text-blue-700' : 'bg-indigo-100 text-indigo-700'}`}>{q.type}</span>
-                             {q.isTraded && <span className="bg-emerald-100 text-emerald-700 text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">Verified Credit</span>}
+                             {q.isTraded && <span className="bg-emerald-100 text-emerald-700 text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">Verified</span>}
                            </div>
                         </div>
                         <span className="text-[10px] font-black text-gray-200">#{questions.length - i}</span>
@@ -333,9 +389,8 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
                   </div>
                ))}
                {questions.length === 0 && (
-                 <div className="h-full flex flex-col items-center justify-center py-20 opacity-20 text-center space-y-4">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    <p className="font-black text-[10px] uppercase tracking-widest">No submission shards found for this attribution</p>
+                 <div className="h-full flex flex-col items-center justify-center py-20 opacity-20 text-center">
+                    <p className="font-black text-[10px] uppercase tracking-widest">Awaiting cloud ingestion...</p>
                  </div>
                )}
             </div>

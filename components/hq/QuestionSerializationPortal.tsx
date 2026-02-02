@@ -55,10 +55,12 @@ const QuestionSerializationPortal: React.FC<{ registry: SchoolRegistryEntry[] }>
 
   const handleAddTheoryRow = () => {
     const nextIdx = masterQuestions.length + 1;
+    {/* Fix: Added missing 'subject' property to satisfy MasterQuestion interface */}
     const newQ: MasterQuestion = {
       id: `MQ-${Date.now()}-${nextIdx}`,
       originalIndex: nextIdx,
       type: 'THEORY',
+      subject: selectedSubject,
       strand: 'New Strand',
       subStrand: 'Sub-Strand',
       indicator: 'B9.x.x.x',
@@ -76,10 +78,12 @@ const QuestionSerializationPortal: React.FC<{ registry: SchoolRegistryEntry[] }>
   };
 
   const handleAdd40Objectives = () => {
+    {/* Fix: Added missing 'subject' property to satisfy MasterQuestion interface inside Array.from map */}
     const newObjs: MasterQuestion[] = Array.from({ length: 40 }, (_, i) => ({
       id: `MQ-OBJ-${Date.now()}-${i + 1}`,
       originalIndex: masterQuestions.length + i + 1,
       type: 'OBJECTIVE',
+      subject: selectedSubject,
       strand: 'GENERAL',
       subStrand: 'CORE',
       indicator: `B9.1.1.1.${i + 1}`,

@@ -17,6 +17,7 @@ import AdvertisementPortalView from './AdvertisementPortalView';
 import MarketingDeskView from './MarketingDeskView';
 import SerializationHubView from './SerializationHubView';
 import QuestionSerializationPortal from './QuestionSerializationPortal';
+import QuestionRegistryView from './QuestionRegistryView';
 
 export interface SystemAuditEntry {
   timestamp: string;
@@ -41,7 +42,7 @@ export interface SubjectDemandMetric {
 const SuperAdminPortal: React.FC<{ onExit: () => void; onRemoteView: (schoolId: string) => void; }> = ({ onExit, onRemoteView }) => {
   const [registry, setRegistry] = useState<SchoolRegistryEntry[]>([]);
   const [auditTrail, setAuditTrail] = useState<SystemAuditEntry[]>([]);
-  const [view, setView] = useState<'registry' | 'recruitment' | 'serialization' | 'questions' | 'advertisement' | 'marketing' | 'pupils' | 'rewards' | 'sig-diff' | 'remarks' | 'annual-report' | 'audit'>('registry');
+  const [view, setView] = useState<'registry' | 'recruitment' | 'serialization' | 'questions' | 'q-registry' | 'advertisement' | 'marketing' | 'pupils' | 'rewards' | 'sig-diff' | 'remarks' | 'annual-report' | 'audit'>('registry');
   const [isSyncing, setIsSyncing] = useState(true);
 
   const fetchHQData = async () => {
@@ -62,7 +63,6 @@ const SuperAdminPortal: React.FC<{ onExit: () => void; onRemoteView: (schoolId: 
           if (row.id === 'audit') {
             compiledAudit = row.payload || [];
           } else {
-            // Safety Check: payload must be treated as an array of entries
             const schoolEntries = Array.isArray(row.payload) ? row.payload : [row.payload];
             compiled.push(...schoolEntries);
           }
@@ -85,7 +85,8 @@ const SuperAdminPortal: React.FC<{ onExit: () => void; onRemoteView: (schoolId: 
       { id: 'registry', label: 'Network Ledger' },
       { id: 'recruitment', label: 'Recruitment Hub' },
       { id: 'serialization', label: 'Serialization' },
-      { id: 'questions', label: 'Hub Ingestion' }
+      { id: 'questions', label: 'Hub Ingestion' },
+      { id: 'q-registry', label: 'Questions Registry' }
     ]},
     { title: "Engagement", tabs: [
       { id: 'advertisement', label: 'Master Ad Desk' },
@@ -148,6 +149,7 @@ const SuperAdminPortal: React.FC<{ onExit: () => void; onRemoteView: (schoolId: 
           {view === 'recruitment' && <RecruitmentHubView registry={registry ?? []} onLogAction={()=>{}} />}
           {view === 'serialization' && <SerializationHubView registry={registry ?? []} onLogAction={()=>{}} />}
           {view === 'questions' && <QuestionSerializationPortal registry={registry ?? []} />}
+          {view === 'q-registry' && <QuestionRegistryView />}
           {view === 'advertisement' && <AdvertisementPortalView onLogAction={()=>{}} />}
           {view === 'marketing' && <MarketingDeskView />}
           {view === 'pupils' && <PupilNetworkRankingView registry={registry ?? []} onRemoteView={onRemoteView} />}

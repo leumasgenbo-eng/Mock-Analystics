@@ -84,7 +84,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
 
   return (
     <div className="space-y-12 animate-in fade-in duration-700 pb-20 font-sans">
-      <section className="bg-slate-950 text-white p-10 rounded-[3.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
+      <section className="bg-slate-950 text-white p-10 rounded-[3rem] border border-white/5 shadow-2xl relative overflow-hidden">
          <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/5 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
          <div className="relative flex flex-col md:flex-row justify-between items-start gap-8">
             <div className="space-y-2">
@@ -111,7 +111,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                 </select>
                 <select value={newStaff.subject} onChange={e=>setNewStaff({...newStaff, subject: e.target.value})} className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black uppercase outline-none">
                    <option value="" className="text-slate-900">SUBJECT SHARD...</option>
-                   {subjects.map(s => <option key={s} value={s} className="text-slate-900">{s.toUpperCase()}</option>)}
+                   {subjects.map(s => <option key={s} value={s}>{s.toUpperCase()}</option>)}
                 </select>
               </div>
               <div className="flex justify-end">
@@ -124,7 +124,8 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       </section>
 
       <div className="grid grid-cols-1 gap-8">
-        {Object.values(facilitators).map((f) => {
+        {/* Fix: Cast Object.values to StaffAssignment[] to resolve property access on 'f' inside map */}
+        {(Object.values(facilitators) as StaffAssignment[]).map((f) => {
           const isExpanded = expandedStaff === f.email;
           return (
             <div key={f.email} className="bg-white rounded-[3rem] border border-gray-100 shadow-xl overflow-hidden group transition-all hover:shadow-2xl">
