@@ -30,6 +30,12 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
     const inputName = fullName.toUpperCase().trim();
     const inputId = nodeId.trim().toUpperCase();
 
+    // 1. MASTER KEY BYPASS (SUPER ADMIN PROTECTION - v7.5 Requirement)
+    if (inputId === 'UBA-HQ-MASTER-2025') {
+        onSuperAdminLogin();
+        return;
+    }
+
     if (!inputName || !inputId) {
       setError("Complete all identity fields.");
       setIsLoading(false);
@@ -37,12 +43,13 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
     }
 
     try {
-      // 1. RECALL FROM DB (UNIFIED HANDSHAKE)
+      // 2. RECALL FROM DB (UNIFIED HANDSHAKE)
+      // We check both nodeId (Standard) and unique_code (The PIN for mobile/external apps)
       const { data: identity, error: idError } = await supabase
         .from('uba_identities')
         .select('*')
+        .or(`node_id.eq.${inputId},unique_code.eq.${inputId}`)
         .eq('full_name', inputName)
-        .eq('node_id', inputId)
         .maybeSingle();
 
       if (idError) throw new Error("Recall Shard unreachable: " + idError.message);
@@ -51,13 +58,13 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
         throw new Error("Identity Mismatch: Handshake particulars not found in registry.");
       }
 
-      // 2. CHECK FOR SUPER ADMIN PRIVILEGE
+      // 3. CHECK FOR SUPER ADMIN ROLE IN DB
       if (identity.role === 'super_admin') {
         onSuperAdminLogin();
         return;
       }
 
-      // 3. SECTOR GATE VERIFICATION
+      // 4. SECTOR GATE VERIFICATION
       const roleMap: Record<string, string> = { 
         'school_admin': 'admin', 
         'facilitator': 'facilitator', 
@@ -68,12 +75,12 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
         throw new Error(`Gate Refusal: This identity node belongs to the ${identity.role.replace('_', ' ')} sector.`);
       }
 
-      // 4. SUCCESSFUL LOGIN
+      // 5. SUCCESSFUL LOGIN
       onLoginSuccess(identity.hub_id, {
         name: identity.full_name,
         nodeId: identity.node_id,
         role: identity.role,
-        subject: identity.role === 'facilitator' ? 'GENERAL' : undefined
+        subject: identity.role === 'facilitator' ? (identity.teaching_category || 'GENERAL') : undefined
       });
 
     } catch (err: any) { 
@@ -87,8 +94,8 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
     return (
       <div className="w-full max-w-4xl p-4 animate-in fade-in duration-500">
         <div className="text-center mb-16">
-           <h2 className="text-4xl font-black text-white uppercase tracking-tighter">MOCK ANALYSIS SS-MAP</h2>
-           <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em] mt-3">Select Identity Sector</p>
+           <h2 className="text-4xl font-black text-white uppercase tracking-tighter">UNITED BAYLOR ACADEMY</h2>
+           <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em] mt-3">Identity Retrieval & Sector Access</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
            {[
@@ -109,7 +116,7 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
           <div className="pt-4 border-t border-white/5 opacity-40 hover:opacity-100 transition-opacity">
             <p className="text-[7px] text-slate-600 uppercase tracking-widest mb-2">Master Handshake (Super-Admin Only)</p>
             <button 
-              onClick={() => { setFullName('HQ CONTROLLER'); setNodeId('MASTER-NODE-01'); handleGateSelect('admin'); }} 
+              onClick={() => { setFullName('HQ CONTROLLER'); setNodeId('UBA-HQ-MASTER-2025'); handleGateSelect('admin'); }} 
               className="text-[8px] font-black text-blue-500 border border-blue-500/20 px-4 py-1 rounded-full uppercase tracking-widest hover:bg-blue-500 hover:text-white transition-all"
             >
               Verify Master Shard
@@ -140,8 +147,8 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
             <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full bg-slate-900 border border-white/5 rounded-2xl px-6 py-4 text-sm font-bold text-white outline-none focus:ring-4 focus:ring-blue-500/10 transition-all uppercase" placeholder="ENTER FULL NAME" required />
           </div>
           <div className="space-y-2">
-            <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-2">System Node ID (Hub or Index #)</label>
-            <input type="text" value={nodeId} onChange={(e) => setNodeId(e.target.value)} className="w-full bg-slate-900 border border-white/5 rounded-2xl px-6 py-4 text-sm font-mono font-bold text-white outline-none focus:ring-4 focus:ring-blue-500/10 transition-all uppercase" placeholder="ENTER ID" required />
+            <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-2">System Node ID or Access Key (PIN)</label>
+            <input type="text" value={nodeId} onChange={(e) => setNodeId(e.target.value)} className="w-full bg-slate-900 border border-white/5 rounded-2xl px-6 py-4 text-sm font-mono font-bold text-white outline-none focus:ring-4 focus:ring-blue-500/10 transition-all uppercase" placeholder="ENTER ID OR PIN" required />
           </div>
           
           {error && <div className="bg-red-500/10 text-red-500 p-5 rounded-2xl text-[9px] font-black uppercase text-center border border-red-500/20">{error}</div>}

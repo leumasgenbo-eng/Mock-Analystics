@@ -1,4 +1,5 @@
 
+
 export interface SubjectScore {
   subject: string;
   score: number;
@@ -73,6 +74,7 @@ export interface VerificationEntry {
 
 export type StaffRole = 'FACILITATOR' | 'INVIGILATOR' | 'EXAMINER' | 'CHIEF INVIGILATOR' | 'CHIEF EXAMINER' | 'SUPERVISOR' | 'OFFICER';
 
+// Fix: Added missing InvigilationSlot interface to resolve compilation errors
 export interface InvigilationSlot {
   dutyDate: string;
   timeSlot: string;
@@ -85,6 +87,8 @@ export interface StaffAssignment {
   role: StaffRole;
   enrolledId: string; 
   taughtSubject?: string;
+  teachingCategory?: string;
+  uniqueCode?: string;
   invigilations: InvigilationSlot[]; 
   marking: {
     dateTaken: string;

@@ -26,7 +26,7 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
       <div className="text-[8px] font-black text-blue-600 uppercase tracking-[0.5em] mb-6 flex justify-center items-center gap-3 no-print">
         <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.6)]"></div>
         <span>INSTITUTIONAL HUB:</span>
-        <span className="font-mono bg-blue-50 px-4 py-1 rounded-lg border border-blue-100">{settings.schoolNumber || "SMA-UBA-NODE-2025"}</span>
+        <span className="font-mono bg-blue-50 px-4 py-1 rounded-lg border border-blue-100">{settings.schoolNumber || "UBA-NODE-2025"}</span>
       </div>
 
       <div className="flex flex-col md:flex-row items-center justify-center gap-12">
@@ -45,7 +45,7 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
         <div className="flex-1 space-y-2">
           <h1 className={`${isLandscape ? 'text-6xl' : 'text-5xl'} font-black text-blue-950 tracking-tighter uppercase leading-none`}>
             {readOnly ? (settings.schoolName || "UNITED BAYLOR ACADEMY") : (
-              <EditableField value={settings.schoolName} onChange={(v) => onSettingChange('schoolName', v.toUpperCase())} className="text-center w-full" />
+              <EditableField value={settings.schoolName || "UNITED BAYLOR ACADEMY"} onChange={(v) => onSettingChange('schoolName', v.toUpperCase())} className="text-center w-full font-black" />
             )}
           </h1>
           <div className="text-[12px] font-bold text-blue-800/60 uppercase tracking-[0.5em] italic">
@@ -55,7 +55,7 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
           </div>
           <div className="text-[11px] font-black text-gray-500 uppercase tracking-[0.4em] pt-2">
             {readOnly ? (settings.schoolAddress || "ACCRA DIGITAL CENTRE, GHANA") : (
-              <EditableField value={settings.schoolAddress} onChange={(v) => onSettingChange('schoolAddress', v.toUpperCase())} className="text-center w-full" />
+              <EditableField value={settings.schoolAddress || "ACCRA DIGITAL CENTRE, GHANA"} onChange={(v) => onSettingChange('schoolAddress', v.toUpperCase())} className="text-center w-full" />
             )}
           </div>
         </div>
@@ -71,17 +71,17 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
 
       {/* Connectivity & Handshake Cluster - Fully Editable Contacts */}
       <div className="flex justify-center flex-wrap gap-x-14 gap-y-3 text-[10px] font-black text-blue-950 uppercase tracking-[0.3em] pt-6 border-t border-slate-50">
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <span className="text-slate-300">TEL:</span>
-          {readOnly ? settings.schoolContact : <EditableField value={settings.schoolContact} onChange={(v) => onSettingChange('schoolContact', v)} />}
+          {readOnly ? settings.schoolContact : <EditableField value={settings.schoolContact} onChange={(v) => onSettingChange('schoolContact', v)} className="font-black" />}
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <span className="text-slate-300">MAIL:</span>
-          {readOnly ? settings.schoolEmail : <EditableField value={settings.schoolEmail} onChange={(v) => onSettingChange('schoolEmail', v.toLowerCase())} />}
+          {readOnly ? settings.schoolEmail : <EditableField value={settings.schoolEmail} onChange={(v) => onSettingChange('schoolEmail', v.toLowerCase())} className="font-black" />}
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <span className="text-slate-300">WEB:</span>
-          {readOnly ? (settings.schoolWebsite || "WWW.UNITEDBAYLOR.EDU") : <EditableField value={settings.schoolWebsite || "WWW.UNITEDBAYLOR.EDU"} onChange={(v) => onSettingChange('schoolWebsite', v.toLowerCase())} />}
+          {readOnly ? (settings.schoolWebsite || "WWW.UNITEDBAYLOR.EDU") : <EditableField value={settings.schoolWebsite || "WWW.UNITEDBAYLOR.EDU"} onChange={(v) => onSettingChange('schoolWebsite', v.toLowerCase())} className="font-black" />}
         </div>
       </div>
     </div>
