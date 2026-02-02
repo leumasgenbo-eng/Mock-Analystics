@@ -47,9 +47,17 @@ const ManagementHeader: React.FC<ManagementHeaderProps> = ({
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20v-6M9 20v-10M15 20V4M3 20h18"></path></svg>
             {isFacilitator ? 'Facilitator Node' : 'Management Hub'}
           </h2>
-          <p className={`${isFacilitator ? 'text-indigo-300' : 'text-blue-300'} text-[9px] sm:text-xs uppercase tracking-widest mt-1 font-bold leading-none`}>
-            Academy: {schoolName} | {isHubActive ? 'NETWORK AUTHORIZED' : 'LOCAL MODE'}
-          </p>
+          <div className="flex items-center justify-center md:justify-start gap-3 mt-1">
+             <p className={`${isFacilitator ? 'text-indigo-300' : 'text-blue-300'} text-[9px] sm:text-xs uppercase tracking-widest font-bold leading-none`}>
+               Academy: {schoolName} | {isHubActive ? 'NETWORK AUTHORIZED' : 'LOCAL MODE'}
+             </p>
+             {isHubActive && (
+                <div className="flex items-center gap-1.5 bg-white/10 px-2 py-0.5 rounded-full border border-white/5">
+                   <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse"></div>
+                   <span className="text-[7px] font-black uppercase text-emerald-400">Cloud Link Active</span>
+                </div>
+             )}
+          </div>
         </div>
         
         {/* LOGGED IN USER IDENTITY BADGE */}

@@ -62,6 +62,7 @@ const DEFAULT_SETTINGS: GlobalSettings = {
 
 const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [viewMode, setViewMode] = useState<'home' | 'master' | 'reports' | 'management' | 'series' | 'pupil_hub'>('home');
   const [reportSearchTerm, setReportSearchTerm] = useState('');
   
@@ -80,6 +81,7 @@ const App: React.FC = () => {
 
   const syncCloudShards = useCallback(async (hubId: string) => {
     if (!hubId) return null;
+    setIsSyncing(true);
     try {
       const { data, error } = await supabase.from('uba_persistence').select('id, payload').eq('hub_id', hubId);
       if (error) throw error;
@@ -97,16 +99,19 @@ const App: React.FC = () => {
         setSettings(cloudSettings);
         setStudents(cloudStudents);
         setFacilitators(cloudFacilitators);
+        setIsSyncing(false);
         return { settings: cloudSettings, students: cloudStudents, facilitators: cloudFacilitators };
       }
     } catch (e) { 
       console.error("[CLOUD SYNC ERROR]", e); 
     }
+    setIsSyncing(false);
     return null;
   }, []);
 
   useEffect(() => {
     const initializeSystem = async () => {
+      // Pull global registry for superadmin/pupil cross-school checks
       const { data: regData } = await supabase.from('uba_persistence').select('payload').like('id', 'registry_%');
       if (regData) setGlobalRegistry(regData.flatMap(r => r.payload || []));
 
@@ -173,12 +178,45 @@ const App: React.FC = () => {
     });
   };
 
-  if (isInitializing) return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-6">
-      <div className="w-16 h-16 border-8 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-      <div className="text-center space-y-1">
-        <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em] leading-none">Handshaking Global Registry</p>
-        <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest leading-none mt-2">United Baylor Academy Hub v9.5 Active</p>
+  // Explicit Handshake on Login
+  const handleLoginTransition = async (hubId: string, user: any) => {
+    setIsSyncing(true);
+    localStorage.setItem('uba_active_hub_id', hubId);
+    localStorage.setItem('uba_active_role', user.role);
+    localStorage.setItem('uba_user_context', JSON.stringify(user));
+    
+    // Fetch and Populate Browser Environment
+    const cloudData = await syncCloudShards(hubId);
+    
+    setCurrentHubId(hubId);
+    setActiveRole(user.role);
+    setLoggedInUser(user);
+    
+    if (user.role === 'facilitator') {
+      setActiveFacilitator({ name: user.name, subject: user.subject || "GENERAL", email: user.email });
+    } else if (user.role === 'pupil' && cloudData) {
+      const s = calculateClassStatistics(cloudData.students, cloudData.settings);
+      const processed = processStudentData(s, cloudData.students, {}, cloudData.settings);
+      const pupil = processed.find(p => p.id === parseInt(user.nodeId));
+      if (pupil) setActivePupil(pupil);
+    }
+    
+    setIsSyncing(false);
+  };
+
+  if (isInitializing || isSyncing) return (
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-8 animate-in fade-in duration-500">
+      <div className="relative">
+         <div className="w-24 h-24 border-8 border-blue-500/20 rounded-full"></div>
+         <div className="absolute inset-0 w-24 h-24 border-8 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+      <div className="text-center space-y-4">
+        <p className="text-xl font-black text-white uppercase tracking-[0.4em] leading-none">
+          {isSyncing ? "Synchronizing Cloud Shards" : "Handshaking Global Registry"}
+        </p>
+        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+          {isSyncing ? "Mirroring instructional data to local hub memory..." : "United Baylor Academy Hub v9.5 Active"}
+        </p>
       </div>
     </div>
   );
@@ -188,7 +226,7 @@ const App: React.FC = () => {
       {isRegistering ? (
         <SchoolRegistrationPortal settings={settings} onBulkUpdate={(u)=>setSettings(p=>({...p,...u}))} onSave={handleSaveAll} onComplete={(hubId)=>{ localStorage.setItem('uba_active_hub_id', hubId); localStorage.setItem('uba_active_role', 'school_admin'); setCurrentHubId(hubId); setActiveRole('school_admin'); }} onResetStudents={()=>setStudents([])} onSwitchToLogin={()=>setIsRegistering(false)} />
       ) : (
-        <LoginPortal onLoginSuccess={async (hubId, user)=>{ localStorage.setItem('uba_active_hub_id', hubId); localStorage.setItem('uba_active_role', user.role); localStorage.setItem('uba_user_context', JSON.stringify(user)); setCurrentHubId(hubId); setActiveRole(user.role); setLoggedInUser(user); await syncCloudShards(hubId); }} onSuperAdminLogin={()=>{ localStorage.setItem('uba_active_role', 'super_admin'); localStorage.setItem('uba_user_context', JSON.stringify({name:'HQ CONTROLLER', role:'super_admin', nodeId:'MASTER-01', email:'hq@unitedbaylor.edu'})); setIsSuperAdmin(true); setActiveRole('super_admin'); }} onSwitchToRegister={()=>setIsRegistering(true)} />
+        <LoginPortal onLoginSuccess={handleLoginTransition} onSuperAdminLogin={()=>{ localStorage.setItem('uba_active_role', 'super_admin'); localStorage.setItem('uba_user_context', JSON.stringify({name:'HQ CONTROLLER', role:'super_admin', nodeId:'MASTER-01', email:'hq@unitedbaylor.edu'})); setIsSuperAdmin(true); setActiveRole('super_admin'); }} onSwitchToRegister={()=>setIsRegistering(true)} />
       )}
     </div>
   );
