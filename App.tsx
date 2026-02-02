@@ -83,27 +83,53 @@ const App: React.FC = () => {
     if (!hubId) return null;
     setIsSyncing(true);
     try {
-      const { data, error } = await supabase.from('uba_persistence').select('id, payload').eq('hub_id', hubId);
-      if (error) throw error;
-      if (data && data.length > 0) {
-        let cloudSettings = { ...DEFAULT_SETTINGS };
-        let cloudStudents: StudentData[] = [];
-        let cloudFacilitators: Record<string, StaffAssignment> = {};
-        
-        data.forEach(row => {
+      // 1. Pull Persistence Shards (Settings, Full Student objects, Facilitator Objects)
+      const { data: persistenceData } = await supabase.from('uba_persistence').select('id, payload').eq('hub_id', hubId);
+      
+      // 2. Pull Unified Learner Roster (Ensure 100% candidate capture)
+      const { data: pupilRegistry } = await supabase.from('uba_pupils').select('*').eq('hub_id', hubId);
+
+      let cloudSettings = { ...DEFAULT_SETTINGS };
+      let cloudStudents: StudentData[] = [];
+      let cloudFacilitators: Record<string, StaffAssignment> = {};
+
+      // Map persistence data
+      if (persistenceData) {
+        persistenceData.forEach(row => {
           if (row.id === `${hubId}_settings`) cloudSettings = row.payload;
           if (row.id === `${hubId}_students`) cloudStudents = row.payload;
           if (row.id === `${hubId}_facilitators`) cloudFacilitators = row.payload;
         });
-
-        setSettings(cloudSettings);
-        setStudents(cloudStudents);
-        setFacilitators(cloudFacilitators);
-        setIsSyncing(false);
-        return { settings: cloudSettings, students: cloudStudents, facilitators: cloudFacilitators };
       }
+
+      // 3. RECONCILIATION: Ensure every pupil in uba_pupils exists in our local StudentData list
+      if (pupilRegistry) {
+        pupilRegistry.forEach(p => {
+          const studentId = parseInt(p.student_id);
+          if (!cloudStudents.some(cs => cs.id === studentId)) {
+            cloudStudents.push({
+              id: studentId,
+              name: p.name,
+              email: `${p.student_id}@academy.hub`,
+              gender: p.gender || 'M',
+              parentContact: '',
+              attendance: 0,
+              scores: {},
+              sbaScores: {},
+              examSubScores: {},
+              mockData: {}
+            });
+          }
+        });
+      }
+
+      setSettings(cloudSettings);
+      setStudents(cloudStudents);
+      setFacilitators(cloudFacilitators);
+      setIsSyncing(false);
+      return { settings: cloudSettings, students: cloudStudents, facilitators: cloudFacilitators };
     } catch (e) { 
-      console.error("[CLOUD SYNC ERROR]", e); 
+      console.error("[CLOUD HANDSHAKE ERROR]", e); 
     }
     setIsSyncing(false);
     return null;
@@ -111,7 +137,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const initializeSystem = async () => {
-      // Pull global registry for superadmin/pupil cross-school checks
+      // Pull global registry for cross-institutional checks
       const { data: regData } = await supabase.from('uba_persistence').select('payload').like('id', 'registry_%');
       if (regData) setGlobalRegistry(regData.flatMap(r => r.payload || []));
 
@@ -178,14 +204,14 @@ const App: React.FC = () => {
     });
   };
 
-  // Explicit Handshake on Login
+  // 100% Data Capture Transition
   const handleLoginTransition = async (hubId: string, user: any) => {
     setIsSyncing(true);
     localStorage.setItem('uba_active_hub_id', hubId);
     localStorage.setItem('uba_active_role', user.role);
     localStorage.setItem('uba_user_context', JSON.stringify(user));
     
-    // Fetch and Populate Browser Environment
+    // Explicitly MIRROR CLOUD to BROWSER MEMORY
     const cloudData = await syncCloudShards(hubId);
     
     setCurrentHubId(hubId);
@@ -205,19 +231,26 @@ const App: React.FC = () => {
   };
 
   if (isInitializing || isSyncing) return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-8 animate-in fade-in duration-500">
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-12 animate-in fade-in duration-500">
       <div className="relative">
-         <div className="w-24 h-24 border-8 border-blue-500/20 rounded-full"></div>
-         <div className="absolute inset-0 w-24 h-24 border-8 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+         <div className="w-32 h-32 border-8 border-blue-500/10 rounded-full"></div>
+         <div className="absolute inset-0 w-32 h-32 border-8 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+         <div className="absolute inset-8 w-16 h-16 border-4 border-indigo-400 border-b-transparent rounded-full animate-[spin_2s_linear_infinite_reverse]"></div>
       </div>
-      <div className="text-center space-y-4">
-        <p className="text-xl font-black text-white uppercase tracking-[0.4em] leading-none">
-          {isSyncing ? "Synchronizing Cloud Shards" : "Handshaking Global Registry"}
+      <div className="text-center space-y-6">
+        <p className="text-2xl font-black text-white uppercase tracking-[0.6em] leading-none animate-pulse">
+          {isSyncing ? "Establishing Hub Mirror" : "Validating Node Shards"}
         </p>
-        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-          {isSyncing ? "Mirroring instructional data to local hub memory..." : "United Baylor Academy Hub v9.5 Active"}
-        </p>
+        <div className="max-w-md mx-auto space-y-2">
+          <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest leading-none">
+            {isSyncing ? "100% Download Protocol Initiated..." : "Handshaking Unified Network Registry v9.5..."}
+          </p>
+          <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+             <div className="h-full bg-blue-500 animate-[progress_3s_ease-in-out_infinite]" style={{width:'50%'}}></div>
+          </div>
+        </div>
       </div>
+      <style dangerouslySetInnerHTML={{ __html: `@keyframes progress { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }` }} />
     </div>
   );
 
