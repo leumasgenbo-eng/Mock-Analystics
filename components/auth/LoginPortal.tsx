@@ -30,7 +30,7 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
     const inputName = fullName.toUpperCase().trim();
     const inputId = nodeId.trim().toUpperCase();
 
-    // 1. MASTER KEY BYPASS (SUPER ADMIN PROTECTION - v7.5 Requirement)
+    // 1. MASTER KEY BYPASS (SUPER ADMIN PROTECTION - v9.5 Protocol)
     if (inputId === 'UBA-HQ-MASTER-2025') {
         onSuperAdminLogin();
         return;
@@ -44,7 +44,6 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
 
     try {
       // 2. RECALL FROM DB (UNIFIED HANDSHAKE)
-      // We check both nodeId (Standard) and unique_code (The PIN for mobile/external apps)
       const { data: identity, error: idError } = await supabase
         .from('uba_identities')
         .select('*')
@@ -75,8 +74,15 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
         throw new Error(`Gate Refusal: This identity node belongs to the ${identity.role.replace('_', ' ')} sector.`);
       }
 
-      // 5. SUCCESSFUL LOGIN
-      // Added email to return object to facilitate full StaffAssignment lookup
+      // 5. ACTIVITY LOG: Log Identity Recall (100% Data Capture)
+      await supabase.from('uba_activity_logs').insert({
+        node_id: identity.hub_id,
+        staff_id: identity.email,
+        action_type: 'IDENTITY_RECALL',
+        context_data: { login_time: new Date().toISOString(), platform: 'ASSESSMENT_HUB' }
+      });
+
+      // 6. SUCCESSFUL LOGIN
       onLoginSuccess(identity.hub_id, {
         name: identity.full_name,
         nodeId: identity.node_id,
@@ -96,8 +102,8 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
     return (
       <div className="w-full max-w-4xl p-4 animate-in fade-in duration-500">
         <div className="text-center mb-16">
-           <h2 className="text-4xl font-black text-white uppercase tracking-tighter">UNITED BAYLOR ACADEMY</h2>
-           <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em] mt-3">Identity Retrieval & Sector Access</p>
+           <h2 className="text-4xl font-black text-white uppercase tracking-tighter leading-none">UNITED BAYLOR ACADEMY</h2>
+           <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em] mt-3 leading-none">Identity Retrieval & Sector Access</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
            {[
@@ -116,7 +122,7 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
         <div className="mt-16 text-center space-y-4">
           <button onClick={onSwitchToRegister} className="text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-white transition-colors">Onboard New Institution</button>
           <div className="pt-4 border-t border-white/5 opacity-40 hover:opacity-100 transition-opacity">
-            <p className="text-[7px] text-slate-600 uppercase tracking-widest mb-2">Master Handshake (Super-Admin Only)</p>
+            <p className="text-[7px] text-slate-600 uppercase tracking-widest mb-2 leading-none">Master Handshake (Super-Admin Only)</p>
             <button 
               onClick={() => { setFullName('HQ CONTROLLER'); setNodeId('UBA-HQ-MASTER-2025'); handleGateSelect('admin'); }} 
               className="text-[8px] font-black text-blue-500 border border-blue-500/20 px-4 py-1 rounded-full uppercase tracking-widest hover:bg-blue-500 hover:text-white transition-all"
@@ -140,7 +146,7 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
         <div className="text-center relative mb-12">
           <div className={`w-24 h-24 mx-auto mb-6 rounded-3xl flex items-center justify-center text-white shadow-2xl border border-white/20 uppercase font-black text-xs bg-${gateColor}-600`}>{activeGate?.substring(0, 3)}</div>
           <h2 className="text-2xl font-black text-white uppercase tracking-tight">IDENTITY RECALL</h2>
-          <p className={`text-[9px] font-black text-${gateColor}-400 uppercase tracking-[0.4em] mt-3`}>Authorized Recall Protocol</p>
+          <p className={`text-[9px] font-black text-${gateColor}-400 uppercase tracking-[0.4em] mt-3 leading-none`}>Authorized Recall Protocol</p>
         </div>
 
         <form onSubmit={handleSyncIdentity} className="space-y-6">
@@ -155,7 +161,7 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
           
           {error && <div className="bg-red-500/10 text-red-500 p-5 rounded-2xl text-[9px] font-black uppercase text-center border border-red-500/20">{error}</div>}
           
-          <button type="submit" disabled={isLoading} className={`w-full bg-${gateColor}-600 hover:bg-${gateColor}-500 text-white py-6 rounded-3xl font-black text-xs uppercase tracking-[0.3em] shadow-2xl transition-colors`}>
+          <button type="submit" disabled={isLoading} className={`w-full bg-${gateColor}-600 hover:bg-${gateColor}-500 text-white py-6 rounded-3xl font-black text-xs uppercase tracking-[0.3em] shadow-2xl transition-all`}>
             {isLoading ? "SYNCING..." : "ENTER ACADEMY HUB"}
           </button>
         </form>

@@ -18,6 +18,7 @@ import MarketingDeskView from './MarketingDeskView';
 import SerializationHubView from './SerializationHubView';
 import QuestionSerializationPortal from './QuestionSerializationPortal';
 import QuestionRegistryView from './QuestionRegistryView';
+import StaffFinancialsView from './StaffFinancialsView';
 
 export interface SystemAuditEntry {
   timestamp: string;
@@ -28,21 +29,10 @@ export interface SystemAuditEntry {
   year: string;
 }
 
-export interface SubjectDemandMetric {
-  subject: string;
-  demandScore: number;
-  difficultyRating: number;
-  networkMeanPerformance: number;
-  maleRemarkShare: number;
-  femaleRemarkShare: number;
-  topRemark: string;
-  remarkCount: number;
-}
-
 const SuperAdminPortal: React.FC<{ onExit: () => void; onRemoteView: (schoolId: string) => void; }> = ({ onExit, onRemoteView }) => {
   const [registry, setRegistry] = useState<SchoolRegistryEntry[]>([]);
   const [auditTrail, setAuditTrail] = useState<SystemAuditEntry[]>([]);
-  const [view, setView] = useState<'registry' | 'recruitment' | 'serialization' | 'questions' | 'q-registry' | 'advertisement' | 'marketing' | 'pupils' | 'rewards' | 'sig-diff' | 'remarks' | 'annual-report' | 'audit'>('registry');
+  const [view, setView] = useState<'registry' | 'recruitment' | 'serialization' | 'questions' | 'q-registry' | 'staff-fin' | 'advertisement' | 'marketing' | 'pupils' | 'rewards' | 'sig-diff' | 'remarks' | 'annual-report' | 'audit'>('registry');
   const [isSyncing, setIsSyncing] = useState(true);
 
   const fetchHQData = async () => {
@@ -86,7 +76,8 @@ const SuperAdminPortal: React.FC<{ onExit: () => void; onRemoteView: (schoolId: 
       { id: 'recruitment', label: 'Recruitment Hub' },
       { id: 'serialization', label: 'Serialization' },
       { id: 'questions', label: 'Hub Ingestion' },
-      { id: 'q-registry', label: 'Questions Registry' }
+      { id: 'q-registry', label: 'Questions Registry' },
+      { id: 'staff-fin', label: 'Staff Balances' }
     ]},
     { title: "Engagement", tabs: [
       { id: 'advertisement', label: 'Master Ad Desk' },
@@ -150,6 +141,7 @@ const SuperAdminPortal: React.FC<{ onExit: () => void; onRemoteView: (schoolId: 
           {view === 'serialization' && <SerializationHubView registry={registry ?? []} onLogAction={()=>{}} />}
           {view === 'questions' && <QuestionSerializationPortal registry={registry ?? []} />}
           {view === 'q-registry' && <QuestionRegistryView />}
+          {view === 'staff-fin' && <StaffFinancialsView />}
           {view === 'advertisement' && <AdvertisementPortalView onLogAction={()=>{}} />}
           {view === 'marketing' && <MarketingDeskView />}
           {view === 'pupils' && <PupilNetworkRankingView registry={registry ?? []} onRemoteView={onRemoteView} />}

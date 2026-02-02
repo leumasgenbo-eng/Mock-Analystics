@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StaffAssignment, StaffRole, GlobalSettings, InvigilationSlot } from '../../types';
 import { supabase } from '../../supabaseClient';
 
@@ -21,6 +21,15 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
   });
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [expandedStaff, setExpandedStaff] = useState<string | null>(null);
+  const [identities, setIdentities] = useState<any[]>([]);
+
+  useEffect(() => {
+     const fetchIdentities = async () => {
+        const { data } = await supabase.from('uba_identities').select('*').eq('hub_id', settings.schoolNumber);
+        if (data) setIdentities(data);
+     };
+     if (settings.schoolNumber) fetchIdentities();
+  }, [settings.schoolNumber, facilitators]);
 
   const createEmptyRegister = (): InvigilationSlot[] => 
     Array.from({ length: 9 }, () => ({ dutyDate: '', timeSlot: '', subject: '' }));
@@ -37,7 +46,6 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       const targetName = newStaff.name.toUpperCase().trim();
       const uniqueCode = newStaff.uniqueCode || `FAC-${Math.floor(100 + Math.random() * 899)}`;
 
-      // 1. IDENTITY HUB SYNC (FOR BOTH APPS)
       await supabase.from('uba_identities').upsert({
         email: targetEmail,
         full_name: targetName,
@@ -45,10 +53,11 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         hub_id: hubId,   
         role: newStaff.role.toLowerCase(),
         teaching_category: newStaff.category,
-        unique_code: uniqueCode
+        unique_code: uniqueCode,
+        merit_balance: 0,
+        monetary_balance: 0
       });
 
-      // Fix: Added default account structure to satisfy StaffAssignment interface requirements
       const staff: StaffAssignment = {
         name: targetName,
         email: targetEmail,
@@ -91,7 +100,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
          <div className="relative flex flex-col md:flex-row justify-between items-start gap-8">
             <div className="space-y-2">
                <h2 className="text-3xl font-black uppercase tracking-tighter">Faculty Shard Matrix</h2>
-               <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Integrated Hub Identity Management</p>
+               <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Institutional Account Oversight Node</p>
             </div>
          </div>
 
@@ -128,6 +137,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       <div className="grid grid-cols-1 gap-8">
         {(Object.values(facilitators) as StaffAssignment[]).map((f) => {
           const isExpanded = expandedStaff === f.email;
+          const identity = identities.find(i => i.email === f.email);
           return (
             <div key={f.email} className="bg-white rounded-[3rem] border border-gray-100 shadow-xl overflow-hidden group transition-all hover:shadow-2xl">
                <div className="p-8 flex flex-col lg:flex-row justify-between items-center gap-8">
@@ -147,9 +157,23 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                         </div>
                      </div>
                   </div>
+                  
+                  {/* Account Summary Overlay */}
+                  <div className="bg-slate-50 px-6 py-4 rounded-3xl border border-gray-100 flex items-center gap-6 shadow-inner">
+                     <div className="text-center">
+                        <span className="text-[7px] font-black text-gray-400 uppercase block">Q-Balance</span>
+                        <p className="text-sm font-black text-blue-900 font-mono">{identity?.merit_balance || 0}</p>
+                     </div>
+                     <div className="w-px h-6 bg-gray-200"></div>
+                     <div className="text-center">
+                        <span className="text-[7px] font-black text-gray-400 uppercase block">Vault (GHS)</span>
+                        <p className="text-sm font-black text-emerald-600 font-mono">{identity?.monetary_balance?.toFixed(2) || '0.00'}</p>
+                     </div>
+                  </div>
+
                   <div className="flex flex-wrap justify-end gap-3">
                      <button onClick={() => setExpandedStaff(isExpanded ? null : f.email)} className={`px-6 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all ${isExpanded ? 'bg-blue-900 text-white shadow-lg' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
-                        {isExpanded ? 'Close Register' : 'Invigilation Register'}
+                        {isExpanded ? 'Close Register' : 'Audit Node'}
                      </button>
                   </div>
                </div>

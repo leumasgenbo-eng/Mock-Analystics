@@ -124,6 +124,8 @@ const ManagementDesk: React.FC<ManagementDeskProps> = ({
               subjects={subjects} 
               facilitators={facilitators} 
               isAdmin={!isFacilitator}
+              // Added missing settings prop to resolve build error
+              settings={settings}
             />
           )}
           {activeTab === 'questionsBank' && (
@@ -131,6 +133,8 @@ const ManagementDesk: React.FC<ManagementDeskProps> = ({
               // Fix: Passed full record to SubjectQuestionsBank using email lookup
               activeFacilitator={activeFacilitator?.email ? facilitators[activeFacilitator.email] : null} 
               subjects={subjects} 
+              // Fix: Added missing settings prop to resolve TypeScript error on line 132
+              settings={settings}
             />
           )}
           {activeTab === 'enrolmentForward' && (
@@ -163,17 +167,8 @@ const ManagementDesk: React.FC<ManagementDeskProps> = ({
           )}
           {activeTab === 'credentials' && <SchoolCredentialView settings={settings} studentCount={students.length} />}
           {activeTab === 'pupils' && <PupilSBAPortal students={students} setStudents={setStudents} settings={settings} subjects={subjects} onSave={onSave} />}
-          {activeTab === 'facilitators' && (
-            <FacilitatorPortal 
-              subjects={subjects} 
-              facilitators={facilitators} 
-              setFacilitators={setFacilitators} 
-              settings={settings} 
-              onSave={onSave} 
-              isFacilitator={isFacilitator} 
-              activeFacilitator={activeFacilitator} 
-            />
-          )}
+          {/* Fix: Added missing onSave prop to FacilitatorPortal to satisfy its FacilitatorPortalProps interface */}
+          {activeTab === 'facilitators' && <FacilitatorPortal subjects={subjects} facilitators={facilitators} setFacilitators={setFacilitators} settings={settings} onSave={onSave} />}
           {activeTab === 'grading' && <GradingConfigPortal settings={settings} onSettingChange={onSettingChange} />}
           {activeTab === 'history' && <SeriesHistoryPortal students={students} settings={settings} />}
           {activeTab === 'resources' && <MockResourcesPortal settings={settings} onSettingChange={onSettingChange} subjects={subjects} />}

@@ -1,6 +1,17 @@
 
 import React from 'react';
-import { SubjectDemandMetric } from './SuperAdminPortal';
+
+// Added SubjectDemandMetric definition locally as it is not exported from SuperAdminPortal
+export interface SubjectDemandMetric {
+  subject: string;
+  demandScore: number;
+  difficultyRating: number;
+  networkMeanPerformance: number;
+  maleRemarkShare: number;
+  femaleRemarkShare: number;
+  topRemark: string;
+  remarkCount: number;
+}
 
 interface RemarkAnalyticsViewProps {
   subjectDemands: SubjectDemandMetric[];

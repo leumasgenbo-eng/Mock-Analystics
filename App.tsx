@@ -69,11 +69,9 @@ const App: React.FC = () => {
   const [activeRole, setActiveRole] = useState<string | null>(localStorage.getItem('uba_active_role'));
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [activePupil, setActivePupil] = useState<ProcessedStudent | null>(null);
-  // Fix: Updated activeFacilitator type to include email for ManagementDesk sub-module requirements
   const [activeFacilitator, setActiveFacilitator] = useState<{ name: string; subject: string; email?: string } | null>(null);
   const [isRegistering, setIsRegistering] = useState(false);
   
-  // Fix: Updated loggedInUser state type to match extended identity context from LoginPortal
   const [loggedInUser, setLoggedInUser] = useState<{ name: string; nodeId: string; role: string; email?: string; subject?: string } | null>(null);
   const [globalRegistry, setGlobalRegistry] = useState<SchoolRegistryEntry[]>([]);
   const [settings, setSettings] = useState<GlobalSettings>(DEFAULT_SETTINGS);
@@ -109,11 +107,9 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const initializeSystem = async () => {
-      // 1. Fetch Network Registry Shards
       const { data: regData } = await supabase.from('uba_persistence').select('payload').like('id', 'registry_%');
       if (regData) setGlobalRegistry(regData.flatMap(r => r.payload || []));
 
-      // 2. Resolve Active Identity Handshake
       const storedUser = localStorage.getItem('uba_user_context');
       if (storedUser) {
         const user = JSON.parse(storedUser);
@@ -124,7 +120,6 @@ const App: React.FC = () => {
         } else if (currentHubId) {
           const cloudData = await syncCloudShards(currentHubId);
           if (user.role === 'facilitator') {
-            // Fix: Propagate email to activeFacilitator simplified object
             setActiveFacilitator({ name: user.name, subject: user.subject || "GENERAL", email: user.email });
           } else if (user.role === 'pupil' && cloudData) {
             const s = calculateClassStatistics(cloudData.students, cloudData.settings);
@@ -161,19 +156,29 @@ const App: React.FC = () => {
   const handleSaveAll = async () => {
     const hubId = settings.schoolNumber || currentHubId;
     if (!hubId) return;
+    
+    // 100% Data Capture: Persist AppState Shards
     await supabase.from('uba_persistence').upsert([
-      { id: `${hubId}_settings`, hub_id: hubId, payload: settings, last_updated: new Date().toISOString() },
-      { id: `${hubId}_students`, hub_id: hubId, payload: students, last_updated: new Date().toISOString() },
-      { id: `${hubId}_facilitators`, hub_id: hubId, payload: facilitators, last_updated: new Date().toISOString() }
+      { id: `${hubId}_settings`, hub_id: hubId, payload: settings, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email },
+      { id: `${hubId}_students`, hub_id: hubId, payload: students, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email },
+      { id: `${hubId}_facilitators`, hub_id: hubId, payload: facilitators, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email }
     ]);
+
+    // Log Global Event
+    await supabase.from('uba_activity_logs').insert({
+        node_id: hubId,
+        staff_id: loggedInUser?.email || 'ANONYMOUS',
+        action_type: 'GLOBAL_PERSISTENCE_SYNC',
+        context_data: { student_count: students.length, mock_cycle: settings.activeMock }
+    });
   };
 
   if (isInitializing) return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-6">
       <div className="w-16 h-16 border-8 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
       <div className="text-center space-y-1">
-        <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em]">Handshaking Global Registry</p>
-        <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">United Baylor Academy Hub v4.6 Active</p>
+        <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em] leading-none">Handshaking Global Registry</p>
+        <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest leading-none mt-2">United Baylor Academy Hub v9.5 Active</p>
       </div>
     </div>
   );
@@ -183,7 +188,7 @@ const App: React.FC = () => {
       {isRegistering ? (
         <SchoolRegistrationPortal settings={settings} onBulkUpdate={(u)=>setSettings(p=>({...p,...u}))} onSave={handleSaveAll} onComplete={(hubId)=>{ localStorage.setItem('uba_active_hub_id', hubId); localStorage.setItem('uba_active_role', 'school_admin'); setCurrentHubId(hubId); setActiveRole('school_admin'); }} onResetStudents={()=>setStudents([])} onSwitchToLogin={()=>setIsRegistering(false)} />
       ) : (
-        <LoginPortal onLoginSuccess={async (hubId, user)=>{ localStorage.setItem('uba_active_hub_id', hubId); localStorage.setItem('uba_active_role', user.role); localStorage.setItem('uba_user_context', JSON.stringify(user)); setCurrentHubId(hubId); setActiveRole(user.role); setLoggedInUser(user); await syncCloudShards(hubId); }} onSuperAdminLogin={()=>{ localStorage.setItem('uba_active_role', 'super_admin'); localStorage.setItem('uba_user_context', JSON.stringify({name:'HQ CONTROLLER', role:'super_admin', nodeId:'MASTER-01'})); setIsSuperAdmin(true); setActiveRole('super_admin'); }} onSwitchToRegister={()=>setIsRegistering(true)} />
+        <LoginPortal onLoginSuccess={async (hubId, user)=>{ localStorage.setItem('uba_active_hub_id', hubId); localStorage.setItem('uba_active_role', user.role); localStorage.setItem('uba_user_context', JSON.stringify(user)); setCurrentHubId(hubId); setActiveRole(user.role); setLoggedInUser(user); await syncCloudShards(hubId); }} onSuperAdminLogin={()=>{ localStorage.setItem('uba_active_role', 'super_admin'); localStorage.setItem('uba_user_context', JSON.stringify({name:'HQ CONTROLLER', role:'super_admin', nodeId:'MASTER-01', email:'hq@unitedbaylor.edu'})); setIsSuperAdmin(true); setActiveRole('super_admin'); }} onSwitchToRegister={()=>setIsRegistering(true)} />
       )}
     </div>
   );
@@ -242,7 +247,7 @@ const App: React.FC = () => {
            ) : (
              <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4 opacity-50">
                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-blue-900"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-               <p className="font-black uppercase text-xs tracking-[0.5em] text-blue-900">No Candidate Data to Display</p>
+               <p className="font-black uppercase text-xs tracking-[0.5em] text-blue-900 leading-none">No Candidate Data to Display</p>
              </div>
            )
         )}
@@ -252,7 +257,6 @@ const App: React.FC = () => {
             {processedStudents.filter(s=>(s.name||"").toLowerCase().includes(reportSearchTerm.toLowerCase())).map(s=><ReportCard key={s.id} student={s} stats={stats} settings={settings} onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} classAverageAggregate={classAvgAggregate} totalEnrolled={processedStudents.length} isFacilitator={isFacilitatorMode} />)}
           </div>
         )}
-        {/* Fix: activeFacilitator simplified object now correctly matches ManagementDesk prop type */}
         {viewMode==='management' && <ManagementDesk students={students} setStudents={setStudents} facilitators={facilitators} setFacilitators={setFacilitators} subjects={SUBJECT_LIST} settings={settings} onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} onBulkUpdate={(u)=>setSettings(p=>({...p,...u}))} onSave={handleSaveAll} processedSnapshot={processedStudents} onLoadDummyData={()=>{}} onClearData={()=>{}} isFacilitator={isFacilitatorMode} activeFacilitator={activeFacilitator} loggedInUser={loggedInUser} />}
       </div>
     </div>
