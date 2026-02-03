@@ -36,11 +36,11 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
       const hubId = `SMA-2025-${Math.floor(1000 + Math.random() * 9000)}`;
       const targetEmail = formData.email.toLowerCase().trim();
       const targetName = formData.registrant.toUpperCase().trim();
-      const accessKey = 'OPEN-HUB'; // Default access key for new registrations
+      const accessKey = 'OPEN-HUB'; // Default access key for new institutional nodes
       const ts = new Date().toISOString();
 
-      // 1. REGISTER IDENTITY (Primary Admin) - This makes the school findable at the login gate
-      await supabase.from('uba_identities').upsert({
+      // 1. IDENTITY REGISTRY SYNC: This allows the school to login immediately
+      const { error: idError } = await supabase.from('uba_identities').upsert({
         email: targetEmail,
         full_name: targetName,
         node_id: hubId,
@@ -48,6 +48,8 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
         role: 'school_admin',
         unique_code: accessKey 
       });
+
+      if (idError) throw idError;
 
       const newSettings: GlobalSettings = {
         ...settings,
@@ -62,14 +64,14 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
         reportDate: new Date().toLocaleDateString()
       };
 
-      // 2. INITIALIZE INSTITUTIONAL SHARDS IN PERSISTENCE HUB
+      // 2. INITIALIZE INSTITUTIONAL PERSISTENCE SHARDS
       await supabase.from('uba_persistence').upsert([
         { id: `${hubId}_settings`, hub_id: hubId, payload: newSettings, last_updated: ts },
         { id: `${hubId}_students`, hub_id: hubId, payload: [], last_updated: ts },
         { id: `${hubId}_facilitators`, hub_id: hubId, payload: {}, last_updated: ts }
       ]);
 
-      // 3. UPDATE REGISTRY VIEW FOR HQ
+      // 3. HQ MASTER REGISTRY VIEW UPDATE
       await supabase.from('uba_persistence').upsert({ 
         id: `registry_${hubId}`, 
         hub_id: hubId, 
@@ -88,11 +90,11 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
       setFinalHubId(hubId);
       setStep('SUCCESS');
       
-      // Auto-save local state
+      // Mirror state locally
       onSave();
 
     } catch (err: any) {
-      alert("Registration Fault: " + err.message);
+      alert("Registration Error: " + err.message);
     } finally {
       setIsLoading(false);
     }
@@ -111,7 +113,7 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
             </div>
             <div className="bg-white/5 p-8 rounded-3xl border border-white/10 space-y-4 text-left">
                <div>
-                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">System Node ID (Required for Login)</span>
+                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">System Node ID (Identity Recall)</span>
                   <p className="text-2xl font-mono font-black text-blue-400 tracking-tighter">{finalHubId}</p>
                </div>
                <div className="pt-4 border-t border-white/5">
@@ -120,13 +122,13 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
                </div>
             </div>
             <div className="text-left px-4">
-              <p className="text-[10px] text-slate-400 italic">Notice: Use your Full Name and the System Node ID above at the Login Gate. You can change your particulars inside the Management Hub.</p>
+              <p className="text-[10px] text-slate-400 italic">Notice: Use your Full Name and the System Node ID above at the Login Gate. Your institutional identity is now stored in the Global Hub.</p>
             </div>
             <button 
               onClick={() => onComplete?.(finalHubId)}
               className="w-full bg-white text-slate-950 py-6 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all"
             >
-              Access Dashboard
+              Access Management Hub
             </button>
          </div>
       </div>
@@ -139,7 +141,7 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
         <div className="bg-white rounded-[3rem] p-10 md:p-14 relative overflow-hidden">
           <div className="text-center space-y-4 mb-12">
               <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tighter leading-none">Institutional Enrollment</h2>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">Storage Persistence Node Sync</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">Identity Registry Provisioning</p>
           </div>
 
           <form onSubmit={handleRegister} className="grid grid-cols-1 gap-6">

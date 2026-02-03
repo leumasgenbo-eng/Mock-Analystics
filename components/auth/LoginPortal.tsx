@@ -42,7 +42,7 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
         .from('uba_identities')
         .select('*')
         .eq('full_name', inputName)
-        .or(`unique_code.eq."${inputKey}",node_id.eq."${inputKey}"`)
+        .or(`unique_code.eq.${inputKey},node_id.eq.${inputKey}`)
         .maybeSingle();
 
       if (idError) throw new Error("Recall Shard unreachable: " + idError.message);
@@ -93,7 +93,7 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
     return (
       <div className="w-full max-w-5xl p-4 animate-in fade-in duration-500">
         <div className="text-center mb-16">
-           <h2 className="text-5xl font-black text-white uppercase tracking-tighter leading-none">SS-MAP</h2>
+           <h2 className="text-4xl font-black text-white uppercase tracking-tighter leading-none">SS-MAP</h2>
            <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em] mt-3 leading-none">Unified Assessment Network — Secure Identity Recall</p>
         </div>
         
