@@ -25,6 +25,11 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<'FORM' | 'SUCCESS'>('FORM');
   const [finalHubId, setFinalHubId] = useState('');
+  const [finalAccessKey, setFinalAccessKey] = useState('');
+
+  const generateUniqueKey = () => {
+    return 'SMA-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+  };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,7 +41,7 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
       const hubId = `SMA-2025-${Math.floor(1000 + Math.random() * 9000)}`;
       const targetEmail = formData.email.toLowerCase().trim();
       const targetName = formData.registrant.toUpperCase().trim();
-      const accessKey = 'OPEN-HUB'; // Default access key for new institutional nodes
+      const accessKey = generateUniqueKey(); // Fix: Generate unique key to prevent uba_identities UNIQUE violation
       const ts = new Date().toISOString();
 
       // 1. IDENTITY REGISTRY SYNC: This allows the school to login immediately
@@ -88,6 +93,7 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
       onBulkUpdate(newSettings);
       if (onResetStudents) onResetStudents();
       setFinalHubId(hubId);
+      setFinalAccessKey(accessKey);
       setStep('SUCCESS');
       
       // Mirror state locally
@@ -118,11 +124,11 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
                </div>
                <div className="pt-4 border-t border-white/5">
                   <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">Master Access Key</span>
-                  <p className="text-2xl font-mono font-black text-emerald-400 tracking-tighter">OPEN-HUB</p>
+                  <p className="text-2xl font-mono font-black text-emerald-400 tracking-tighter">{finalAccessKey}</p>
                </div>
             </div>
             <div className="text-left px-4">
-              <p className="text-[10px] text-slate-400 italic">Notice: Use your Full Name and the System Node ID above at the Login Gate. Your institutional identity is now stored in the Global Hub.</p>
+              <p className="text-[10px] text-slate-400 italic">Notice: Use your Full Name and the System Node ID above at the Login Gate. Your institutional identity is now unique and stored in the Global Hub.</p>
             </div>
             <button 
               onClick={() => onComplete?.(finalHubId)}

