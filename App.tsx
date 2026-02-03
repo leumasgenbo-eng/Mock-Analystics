@@ -81,7 +81,7 @@ const App: React.FC = () => {
 
   /**
    * EMERGENCY BLACK-BOX PERSISTENCE
-   * v9.5.7 Extension: Relational Score Registry Push
+   * v9.5.8 Extension: Relational Score Registry & Particulars Mirroring
    */
   const handleSaveAll = async (overrides?: { settings?: GlobalSettings, students?: StudentData[], facilitators?: Record<string, StaffAssignment> }) => {
     const activeSettings = overrides?.settings || stateRef.current.settings;
@@ -91,7 +91,6 @@ const App: React.FC = () => {
     const hubId = activeSettings.schoolNumber || currentHubId;
     if (!hubId) return;
 
-    // MIRROR 1: LOCAL HARDWARE (IMMEDIATE)
     localStorage.setItem(`uba_safety_shard_${hubId}`, JSON.stringify({
       settings: activeSettings,
       students: activeStudents,
@@ -102,7 +101,6 @@ const App: React.FC = () => {
     try {
       const timestamp = new Date().toISOString();
       
-      // MIRROR 2: CLOUD PERSISTENCE (BULK JSON)
       const updates = [
         { id: `${hubId}_settings`, hub_id: hubId, payload: activeSettings, last_updated: timestamp },
         { id: `${hubId}_students`, hub_id: hubId, payload: activeStudents, last_updated: timestamp },
@@ -110,8 +108,7 @@ const App: React.FC = () => {
       ];
       await supabase.from('uba_persistence').upsert(updates);
 
-      // MIRROR 3: RELATIONAL SCORE REGISTRY (FLATTENED)
-      // We push scores for the active mock to the public.uba_mock_scores table for HQ analysis
+      // RELATIONAL SCORE REGISTRY SYNC (v9.5.8 Protocol)
       const activeMock = activeSettings.activeMock;
       const scoresPayload = activeStudents.flatMap(s => {
          const mockSet = s.mockData?.[activeMock];
@@ -136,11 +133,11 @@ const App: React.FC = () => {
       await supabase.from('uba_activity_logs').insert({
           node_id: hubId,
           staff_id: loggedInUser?.email || 'SYSTEM_AUTO',
-          action_type: 'GLOBAL_PERSISTENCE_SYNC',
-          context_data: { status: 'COMMITTED', scores_synced: scoresPayload.length, version: 'v9.5.7' }
+          action_type: 'SCORE_REGISTRY_SYNC',
+          context_data: { status: 'COMMITTED', shards: scoresPayload.length, mock: activeMock }
       });
     } catch (e) {
-      console.warn("[CLOUD MIRROR FAILED - LOCAL SHARD PRESERVED]", e);
+      console.warn("[CLOUD SYNC ERROR - LOCAL SHARD PRESERVED]", e);
     }
   };
 

@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { StudentData, GlobalSettings } from '../../types';
 import { supabase } from '../../supabaseClient';
@@ -53,7 +52,7 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
       node_id: studentId,
       hub_id: hubId,
       role: 'pupil',
-      unique_code: accessPin // THE 6-DIGIT PIN
+      unique_code: accessPin // THE 6-DIGIT PIN AS REQUESTED
     });
 
     if (idError) throw idError;
@@ -72,7 +71,7 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     return {
       id: sequence, 
       indexNumber: studentId, 
-      uniqueCode: accessPin, // Local reference for display
+      uniqueCode: accessPin, // Local reference for UI recording
       name: targetName, 
       email: targetEmail, 
       gender: (data.gender || 'M').charAt(0).toUpperCase(),
@@ -104,7 +103,7 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
         const nextSequence = students.length > 0 ? Math.max(...students.map(s => s.id)) + 1 : 101;
         const student = await enrollStudentAction(formData, nextSequence);
         setStudents(prev => [...prev, student]);
-        alert(`NODE ACTIVATED: ID ${student.indexNumber} is live. ACCESS PIN: ${student.uniqueCode}`);
+        alert(`PUPIL CREATED:\nID: ${student.indexNumber}\nACCESS PIN: ${student.uniqueCode}\n\nRecord this PIN for the pupil.`);
       }
 
       setFormData({ name: '', email: '', gender: 'M', guardianName: '', parentContact: '', parentEmail: '' });
