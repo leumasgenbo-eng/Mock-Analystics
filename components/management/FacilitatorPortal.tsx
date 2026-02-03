@@ -8,7 +8,7 @@ interface FacilitatorPortalProps {
   facilitators: Record<string, StaffAssignment>;
   setFacilitators: React.Dispatch<React.SetStateAction<Record<string, StaffAssignment>>>;
   settings: GlobalSettings;
-  onSave: () => void;
+  onSave: (overrides?: any) => void;
   isFacilitator?: boolean;
   activeFacilitator?: { name: string; subject: string } | null;
 }
@@ -46,17 +46,20 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       const targetName = newStaff.name.toUpperCase().trim();
       const uniqueCode = newStaff.uniqueCode || `FAC-${Math.floor(100 + Math.random() * 899)}`;
 
-      await supabase.from('uba_identities').upsert({
+      // 1. PUSH TO CLOUD IDENTITY TABLE
+      const { error: idError } = await supabase.from('uba_identities').upsert({
         email: targetEmail,
         full_name: targetName,
         node_id: nodeId, 
         hub_id: hubId,   
-        role: newStaff.role.toLowerCase(),
+        role: newStaff.role.toLowerCase() === 'school_admin' ? 'school_admin' : 'facilitator',
         teaching_category: newStaff.category,
         unique_code: uniqueCode,
         merit_balance: 0,
         monetary_balance: 0
       });
+
+      if (idError) throw idError;
 
       const staff: StaffAssignment = {
         name: targetName,
@@ -71,14 +74,19 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         marking: { dateTaken: '', dateReturned: '', inProgress: false }
       };
 
-      setFacilitators(prev => ({ ...prev, [targetEmail]: staff }));
+      // 2. UPDATE LOCAL STATE
+      const nextFacilitators = { ...facilitators, [targetEmail]: staff };
+      setFacilitators(nextFacilitators);
       setNewStaff({ name: '', email: '', role: 'FACILITATOR', subject: '', category: 'BASIC_SUBJECT_LEVEL', uniqueCode: '' });
-      alert(`FACULTY SYNC: ${targetName} identity shared with cloud hub.`);
       
-      // Persistence handshake
-      setTimeout(onSave, 200);
+      // 3. FORCE IMMEDIATE PERSISTENCE SYNC WITH OVERRIDE
+      // This ensures the cloud gets the new facilitator even before React finishes re-rendering
+      await onSave({ facilitators: nextFacilitators });
+      
+      alert(`FACULTY CLOUD SYNC: ${targetName} registered and stored.`);
     } catch (err: any) {
-      alert("Enrolment Error: " + err.message);
+      alert("Enrolment Error: " + (err.message || "Cloud handshake failed."));
+      console.error("Cloud Error:", err);
     } finally {
       setIsEnrolling(false);
     }
@@ -89,9 +97,10 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       const staff = { ...prev[email] };
       const nextInv = [...staff.invigilations];
       nextInv[index] = { ...nextInv[index], [field]: value };
-      return { ...prev, [email]: { ...staff, invigilations: nextInv } };
+      const nextFacs = { ...prev, [email]: { ...staff, invigilations: nextInv } };
+      onSave({ facilitators: nextFacs });
+      return nextFacs;
     });
-    setTimeout(onSave, 200);
   };
 
   const roles: StaffRole[] = ['FACILITATOR', 'INVIGILATOR', 'EXAMINER', 'CHIEF INVIGILATOR', 'CHIEF EXAMINER', 'SUPERVISOR', 'OFFICER'];
@@ -130,7 +139,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
               </div>
               <div className="flex justify-end">
                 <button type="submit" disabled={isEnrolling} className="bg-blue-600 hover:bg-blue-500 text-white px-12 py-4 rounded-2xl font-black text-[10px] uppercase shadow-lg transition-all active:scale-95">
-                  {isEnrolling ? "SYNCING HUB..." : "Enroll Shared Identity"}
+                  {isEnrolling ? "SYNCING HUB..." : "Enroll & Store to Cloud"}
                 </button>
               </div>
            </form>
@@ -161,7 +170,6 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                      </div>
                   </div>
                   
-                  {/* Account Summary Overlay */}
                   <div className="bg-slate-50 px-6 py-4 rounded-3xl border border-gray-100 flex items-center gap-6 shadow-inner">
                      <div className="text-center">
                         <span className="text-[7px] font-black text-gray-400 uppercase block">Q-Balance</span>
@@ -206,7 +214,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                        ))}
                     </div>
                     <div className="mt-8 flex justify-center no-print">
-                       <button onClick={onSave} className="bg-slate-900 text-white px-10 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">Force Cloud Handshake</button>
+                       <button onClick={() => onSave()} className="bg-slate-900 text-white px-10 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">Force Cloud Handshake</button>
                     </div>
                  </div>
                )}

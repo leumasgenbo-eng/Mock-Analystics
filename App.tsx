@@ -79,7 +79,6 @@ const App: React.FC = () => {
   const [students, setStudents] = useState<StudentData[]>([]); 
   const [facilitators, setFacilitators] = useState<Record<string, StaffAssignment>>({});
 
-  // Deep Sync Tracker: Ensure handlesaveAll always uses the latest available state shards
   const stateRef = useRef({ settings, students, facilitators });
   useEffect(() => {
     stateRef.current = { settings, students, facilitators };
@@ -195,25 +194,34 @@ const App: React.FC = () => {
     window.location.reload(); 
   };
 
-  const handleSaveAll = async () => {
-    // Critical: Pull latest shards from Ref to avoid stale closure data
-    const { settings: s, students: st, facilitators: f } = stateRef.current;
+  /**
+   * GLOBAL PERSISTENCE HUB
+   * Accepts optional overrides to prevent race conditions during heavy sync ops (like adding staff)
+   */
+  const handleSaveAll = async (overrides?: { students?: StudentData[], settings?: GlobalSettings, facilitators?: Record<string, StaffAssignment> }) => {
+    const s = overrides?.settings || stateRef.current.settings;
+    const st = overrides?.students || stateRef.current.students;
+    const f = overrides?.facilitators || stateRef.current.facilitators;
+    
     const hubId = s.schoolNumber || currentHubId;
     if (!hubId) return;
     
-    // 100% Data Capture: Persist AppState Shards
-    await supabase.from('uba_persistence').upsert([
-      { id: `${hubId}_settings`, hub_id: hubId, payload: s, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email },
-      { id: `${hubId}_students`, hub_id: hubId, payload: st, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email },
-      { id: `${hubId}_facilitators`, hub_id: hubId, payload: f, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email }
-    ]);
+    try {
+      await supabase.from('uba_persistence').upsert([
+        { id: `${hubId}_settings`, hub_id: hubId, payload: s, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email },
+        { id: `${hubId}_students`, hub_id: hubId, payload: st, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email },
+        { id: `${hubId}_facilitators`, hub_id: hubId, payload: f, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email }
+      ]);
 
-    await supabase.from('uba_activity_logs').insert({
-        node_id: hubId,
-        staff_id: loggedInUser?.email || 'ANONYMOUS',
-        action_type: 'GLOBAL_PERSISTENCE_SYNC',
-        context_data: { student_count: st.length, mock_cycle: s.activeMock }
-    });
+      await supabase.from('uba_activity_logs').insert({
+          node_id: hubId,
+          staff_id: loggedInUser?.email || 'ANONYMOUS',
+          action_type: 'GLOBAL_PERSISTENCE_SYNC',
+          context_data: { student_count: st.length, mock_cycle: s.activeMock }
+      });
+    } catch (e) {
+      console.error("Cloud Sync Failure:", e);
+    }
   };
 
   const handleLoginTransition = async (hubId: string, user: any) => {
