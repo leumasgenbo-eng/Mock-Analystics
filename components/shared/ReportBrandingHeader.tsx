@@ -41,7 +41,7 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
           )}
         </div>
 
-        {/* Institutional Identity Cluster - Fully Editable Particulars */}
+        {/* Institutional Identity Cluster - Fully Editable Particulars of UNITED BAYLOR ACADEMY */}
         <div className="flex-1 space-y-2">
           <h1 className={`${isLandscape ? 'text-6xl' : 'text-5xl'} font-black text-blue-950 tracking-tighter uppercase leading-none`}>
             {readOnly ? (settings.schoolName || "UNITED BAYLOR ACADEMY") : (

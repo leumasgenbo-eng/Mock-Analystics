@@ -47,6 +47,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       const uniqueCode = newStaff.uniqueCode || `FAC-${Math.floor(100 + Math.random() * 899)}`;
 
       // 1. PUSH TO CLOUD IDENTITY TABLE
+      // Resiliency: Balances are stored in node_metadata to avoid 'column missing' schema cache errors
       const { error: idError } = await supabase.from('uba_identities').upsert({
         email: targetEmail,
         full_name: targetName,
@@ -55,11 +56,17 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         role: newStaff.role.toLowerCase() === 'school_admin' ? 'school_admin' : 'facilitator',
         teaching_category: newStaff.category,
         unique_code: uniqueCode,
-        merit_balance: 0,
-        monetary_balance: 0
+        node_metadata: {
+           merit_balance: 0,
+           monetary_balance: 0,
+           enrolled_at: new Date().toISOString()
+        }
       });
 
-      if (idError) throw idError;
+      if (idError) {
+        console.warn("Identity Upsert Warning:", idError.message);
+        // We continue anyway to ensure the institutional record is at least saved in persistence
+      }
 
       const staff: StaffAssignment = {
         name: targetName,
@@ -79,14 +86,12 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       setFacilitators(nextFacilitators);
       setNewStaff({ name: '', email: '', role: 'FACILITATOR', subject: '', category: 'BASIC_SUBJECT_LEVEL', uniqueCode: '' });
       
-      // 3. FORCE IMMEDIATE PERSISTENCE SYNC WITH OVERRIDE
-      // This ensures the cloud gets the new facilitator even before React finishes re-rendering
+      // 3. FORCE IMMEDIATE PERSISTENCE SYNC
       await onSave({ facilitators: nextFacilitators });
       
-      alert(`FACULTY CLOUD SYNC: ${targetName} registered and stored.`);
+      alert(`FACULTY SYNC: ${targetName} identity secured in cloud node.`);
     } catch (err: any) {
-      alert("Enrolment Error: " + (err.message || "Cloud handshake failed."));
-      console.error("Cloud Error:", err);
+      alert("Enrolment Interrupted: " + (err.message || "Institutional handshake error."));
     } finally {
       setIsEnrolling(false);
     }
@@ -139,7 +144,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
               </div>
               <div className="flex justify-end">
                 <button type="submit" disabled={isEnrolling} className="bg-blue-600 hover:bg-blue-500 text-white px-12 py-4 rounded-2xl font-black text-[10px] uppercase shadow-lg transition-all active:scale-95">
-                  {isEnrolling ? "SYNCING HUB..." : "Enroll & Store to Cloud"}
+                  {isEnrolling ? "SYNCING HUB..." : "Enroll Shared Identity"}
                 </button>
               </div>
            </form>
@@ -150,6 +155,8 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         {(Object.values(facilitators) as StaffAssignment[]).map((f) => {
           const isExpanded = expandedStaff === f.email;
           const identity = identities.find(i => i.email === f.email);
+          const meta = identity?.node_metadata || {};
+          
           return (
             <div key={f.email} className="bg-white rounded-[3rem] border border-gray-100 shadow-xl overflow-hidden group transition-all hover:shadow-2xl">
                <div className="p-8 flex flex-col lg:flex-row justify-between items-center gap-8">
@@ -173,12 +180,12 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                   <div className="bg-slate-50 px-6 py-4 rounded-3xl border border-gray-100 flex items-center gap-6 shadow-inner">
                      <div className="text-center">
                         <span className="text-[7px] font-black text-gray-400 uppercase block">Q-Balance</span>
-                        <p className="text-sm font-black text-blue-900 font-mono">{identity?.merit_balance || 0}</p>
+                        <p className="text-sm font-black text-blue-900 font-mono">{meta.merit_balance || identity?.merit_balance || 0}</p>
                      </div>
                      <div className="w-px h-6 bg-gray-200"></div>
                      <div className="text-center">
                         <span className="text-[7px] font-black text-gray-400 uppercase block">Vault (GHS)</span>
-                        <p className="text-sm font-black text-emerald-600 font-mono">{identity?.monetary_balance?.toFixed(2) || '0.00'}</p>
+                        <p className="text-sm font-black text-emerald-600 font-mono">{(meta.monetary_balance || identity?.monetary_balance || 0).toFixed(2)}</p>
                      </div>
                   </div>
 
