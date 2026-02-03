@@ -83,17 +83,22 @@ const App: React.FC = () => {
     if (!hubId) return null;
     setIsSyncing(true);
     try {
-      // 1. Pull Persistence Shards (Settings, Full Student objects, Facilitator Objects)
-      const { data: persistenceData } = await supabase.from('uba_persistence').select('id, payload').eq('hub_id', hubId);
+      // 1. PULL COMPLEX PERSISTENCE SHARDS (Rich App State)
+      const { data: persistenceData } = await supabase
+        .from('uba_persistence')
+        .select('id, payload')
+        .eq('hub_id', hubId);
       
-      // 2. Pull Unified Learner Roster (Ensure 100% candidate capture)
-      const { data: pupilRegistry } = await supabase.from('uba_pupils').select('*').eq('hub_id', hubId);
+      // 2. PULL FLAT PUPIL REGISTRY (Master Roster)
+      const { data: pupilRegistry } = await supabase
+        .from('uba_pupils')
+        .select('*')
+        .eq('hub_id', hubId);
 
       let cloudSettings = { ...DEFAULT_SETTINGS };
       let cloudStudents: StudentData[] = [];
       let cloudFacilitators: Record<string, StaffAssignment> = {};
 
-      // Map persistence data
       if (persistenceData) {
         persistenceData.forEach(row => {
           if (row.id === `${hubId}_settings`) cloudSettings = row.payload;
@@ -102,15 +107,21 @@ const App: React.FC = () => {
         });
       }
 
-      // 3. RECONCILIATION: Ensure every pupil in uba_pupils exists in our local StudentData list
-      if (pupilRegistry) {
+      // 3. DEEP RECONCILIATION: Fix for "The Learner have not been downloaded"
+      // Merge flat pupils into the student working set if they are missing from the persistence shard
+      if (pupilRegistry && pupilRegistry.length > 0) {
+        const mergedStudents = [...cloudStudents];
+        
         pupilRegistry.forEach(p => {
           const studentId = parseInt(p.student_id);
-          if (!cloudStudents.some(cs => cs.id === studentId)) {
-            cloudStudents.push({
+          const exists = mergedStudents.some(cs => cs.id === studentId);
+          
+          if (!exists) {
+            // Forge missing identity shard in local memory
+            mergedStudents.push({
               id: studentId,
-              name: p.name,
-              email: `${p.student_id}@academy.hub`,
+              name: p.name.toUpperCase(),
+              email: `${p.student_id}@unitedbaylor.edu`,
               gender: p.gender || 'M',
               parentContact: '',
               attendance: 0,
@@ -121,17 +132,19 @@ const App: React.FC = () => {
             });
           }
         });
+        cloudStudents = mergedStudents;
       }
 
       setSettings(cloudSettings);
       setStudents(cloudStudents);
       setFacilitators(cloudFacilitators);
+      
       setIsSyncing(false);
       return { settings: cloudSettings, students: cloudStudents, facilitators: cloudFacilitators };
     } catch (e) { 
-      console.error("[CLOUD HANDSHAKE ERROR]", e); 
+      console.error("[CLOUD RECONCILIATION FAULT]", e); 
+      setIsSyncing(false);
     }
-    setIsSyncing(false);
     return null;
   }, []);
 
@@ -204,14 +217,14 @@ const App: React.FC = () => {
     });
   };
 
-  // 100% Data Capture Transition
+  // 100% Data Handshake Transition
   const handleLoginTransition = async (hubId: string, user: any) => {
     setIsSyncing(true);
     localStorage.setItem('uba_active_hub_id', hubId);
     localStorage.setItem('uba_active_role', user.role);
     localStorage.setItem('uba_user_context', JSON.stringify(user));
     
-    // Explicitly MIRROR CLOUD to BROWSER MEMORY
+    // Explicitly mirror cloud to browser
     const cloudData = await syncCloudShards(hubId);
     
     setCurrentHubId(hubId);
@@ -239,14 +252,14 @@ const App: React.FC = () => {
       </div>
       <div className="text-center space-y-6">
         <p className="text-2xl font-black text-white uppercase tracking-[0.6em] leading-none animate-pulse">
-          {isSyncing ? "Establishing Hub Mirror" : "Validating Node Shards"}
+          {isSyncing ? "Establishing Deep Mirror" : "Validating Node Shards"}
         </p>
         <div className="max-w-md mx-auto space-y-2">
           <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest leading-none">
-            {isSyncing ? "100% Download Protocol Initiated..." : "Handshaking Unified Network Registry v9.5..."}
+            {isSyncing ? "100% Learner Data Download Protocol..." : "Handshaking Unified Network Registry v9.5..."}
           </p>
           <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-             <div className="h-full bg-blue-500 animate-[progress_3s_ease-in-out_infinite]" style={{width:'50%'}}></div>
+             <div className="h-full bg-blue-500 animate-[progress_3s_ease-in-out_infinite]" style={{width:'70%'}}></div>
           </div>
         </div>
       </div>
