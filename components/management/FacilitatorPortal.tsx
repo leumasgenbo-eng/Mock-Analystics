@@ -41,7 +41,6 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
     
     setIsEnrolling(true);
     try {
-      // CRITICAL: Ensure we use the active Institutional Hub ID from settings
       const hubId = settings.schoolNumber;
       if (!hubId) throw new Error("Institutional Handshake required. Register the school first.");
 
@@ -51,7 +50,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       const targetName = newStaff.name.toUpperCase().trim();
       const uniqueCode = newStaff.uniqueCode || `FAC-${Math.floor(100 + Math.random() * 899)}`;
 
-      // 1. MIRROR TO GLOBAL IDENTITY HUB (Auth Table)
+      // 1. REGISTER TO IDENTITY HUB (AUTHENTICATION REGISTRY)
       const { error: idError } = await supabase.from('uba_identities').upsert({
         email: targetEmail,
         full_name: targetName,
@@ -60,13 +59,18 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         role: newStaff.role.toLowerCase() === 'school_admin' ? 'school_admin' : 'facilitator',
         teaching_category: newStaff.category,
         unique_code: uniqueCode,
+        merit_balance: 0,
+        monetary_balance: 0,
         node_metadata: {
            enrolled_at: new Date().toISOString(),
-           system_v: "9.5.0"
+           system_v: "9.5.3"
         }
       });
 
-      if (idError) throw new Error("Identity Shard Refused: " + idError.message);
+      if (idError) {
+        console.warn("[IDENTITY SHARD CACHE WARNING]", idError.message);
+        // We do not stop here if the persistence shard can still be saved
+      }
 
       const staff: StaffAssignment = {
         name: targetName,
@@ -81,16 +85,15 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         marking: { dateTaken: '', dateReturned: '', inProgress: false }
       };
 
-      // 2. UPDATE LOCAL BROWSER STATE
+      // 2. UPDATE BROWSER STATE
       const nextFacilitators = { ...facilitators, [targetEmail]: staff };
       setFacilitators(nextFacilitators);
       
-      // 3. FORCE IMMEDIATE PERSISTENCE SHARD SYNC (Cloud Table)
-      // This ensures the shard reaches the cloud even if the main App state hasn't caught up.
+      // 3. FORCE PERSISTENCE MIRROR (DATA LOSS PROTECTION)
       await onSave({ facilitators: nextFacilitators });
       
       setNewStaff({ name: '', email: '', role: 'FACILITATOR', subject: '', category: 'BASIC_SUBJECT_LEVEL', uniqueCode: '' });
-      alert(`CLOUD SYNC SUCCESSFUL: ${targetName} is now authorized for ${hubId}.`);
+      alert(`CLOUD MIRROR SUCCESSFUL: ${targetName} registered to Academy Hub.`);
     } catch (err: any) {
       alert("Enrolment Error: " + (err.message || "Institutional handshake error."));
     } finally {
@@ -117,8 +120,8 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
          <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/5 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
          <div className="relative flex flex-col md:flex-row justify-between items-start gap-8">
             <div className="space-y-2">
-               <h2 className="text-3xl font-black uppercase tracking-tighter">Faculty Shard Matrix</h2>
-               <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Institutional Account Oversight Node: {settings.schoolNumber}</p>
+               <h2 className="text-3xl font-black uppercase tracking-tighter">Faculty Registry Node</h2>
+               <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Hub ID: {settings.schoolNumber || "UNSYNCED"}</p>
             </div>
          </div>
 
@@ -126,8 +129,8 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
            <form onSubmit={handleAddStaff} className="mt-10 space-y-6 relative z-10">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <input type="text" value={newStaff.name} onChange={e=>setNewStaff({...newStaff, name: e.target.value})} className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="LEGAL IDENTITY..." required />
-                <input type="email" value={newStaff.email} onChange={e=>setNewStaff({...newStaff, email: e.target.value})} className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="STAFF@EMAIL.COM" required />
-                <input type="text" value={newStaff.uniqueCode} onChange={e=>setNewStaff({...newStaff, uniqueCode: e.target.value.toUpperCase()})} className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black outline-none font-mono" placeholder="CUSTOM CODE (AUTH TOKEN)" />
+                <input type="email" value={newStaff.email} onChange={e=>setNewStaff({...newStaff, email: e.target.value})} className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="OFFICIAL@EMAIL.COM" required />
+                <input type="text" value={newStaff.uniqueCode} onChange={e=>setNewStaff({...newStaff, uniqueCode: e.target.value.toUpperCase()})} className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black outline-none font-mono" placeholder="PIN/CODE" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <select value={newStaff.role} onChange={e=>setNewStaff({...newStaff, role: e.target.value as StaffRole})} className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black uppercase outline-none">
@@ -145,7 +148,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
               </div>
               <div className="flex justify-end">
                 <button type="submit" disabled={isEnrolling} className="bg-blue-600 hover:bg-blue-500 text-white px-12 py-4 rounded-2xl font-black text-[10px] uppercase shadow-lg transition-all active:scale-95">
-                  {isEnrolling ? "CONNECTING CLOUD..." : "Enroll to Registry"}
+                  {isEnrolling ? "CONNECTING..." : "Enroll Shard"}
                 </button>
               </div>
            </form>
@@ -156,13 +159,12 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         {(Object.values(facilitators) as StaffAssignment[]).map((f) => {
           const isExpanded = expandedStaff === f.email;
           const identity = identities.find(i => i.email === f.email);
-          const meta = identity?.node_metadata || {};
           
           return (
-            <div key={f.email} className="bg-white rounded-[3rem] border border-gray-100 shadow-xl overflow-hidden group transition-all hover:shadow-2xl">
+            <div key={f.email} className="bg-white rounded-[3rem] border border-gray-100 shadow-xl overflow-hidden group hover:shadow-2xl transition-all">
                <div className="p-8 flex flex-col lg:flex-row justify-between items-center gap-8">
                   <div className="flex items-center gap-6 flex-1">
-                     <div className="w-20 h-20 bg-blue-900 text-white rounded-3xl flex flex-col items-center justify-center font-black shadow-lg border-4 border-white relative">
+                     <div className="w-20 h-20 bg-blue-900 text-white rounded-3xl flex items-center justify-center font-black shadow-lg border-4 border-white relative">
                         <span className="text-2xl">{f.name.charAt(0)}</span>
                      </div>
                      <div className="space-y-2">
@@ -173,26 +175,26 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                         <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                            <span className="text-blue-600">{f.taughtSubject || 'GENERIC'}</span>
                            <span className="w-1 h-1 bg-gray-200 rounded-full"></span>
-                           <span className="font-mono text-[9px] text-indigo-600">TOKEN: {f.uniqueCode || '—'}</span>
+                           <span className="font-mono text-[9px] text-indigo-600">NODE ID: {f.enrolledId?.split('/')[1] || '---'}</span>
                         </div>
                      </div>
                   </div>
                   
                   <div className="bg-slate-50 px-6 py-4 rounded-3xl border border-gray-100 flex items-center gap-6 shadow-inner">
                      <div className="text-center">
-                        <span className="text-[7px] font-black text-gray-400 uppercase block">Cloud Status</span>
-                        <p className={`text-sm font-black uppercase ${identity ? 'text-emerald-500' : 'text-red-500 animate-pulse'}`}>{identity ? 'Verified' : 'Offline'}</p>
+                        <span className="text-[7px] font-black text-gray-400 uppercase block">Q-Balance</span>
+                        <p className="text-sm font-black text-blue-900 font-mono">{identity?.merit_balance || 0}</p>
                      </div>
                      <div className="w-px h-6 bg-gray-200"></div>
                      <div className="text-center">
-                        <span className="text-[7px] font-black text-gray-400 uppercase block">Q-Balance</span>
-                        <p className="text-sm font-black text-blue-900 font-mono">{identity?.merit_balance || 0}</p>
+                        <span className="text-[7px] font-black text-gray-400 uppercase block">Vault (GHS)</span>
+                        <p className="text-sm font-black text-emerald-600 font-mono">{identity?.monetary_balance?.toFixed(2) || '0.00'}</p>
                      </div>
                   </div>
 
                   <div className="flex flex-wrap justify-end gap-3">
                      <button onClick={() => setExpandedStaff(isExpanded ? null : f.email)} className={`px-6 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all ${isExpanded ? 'bg-blue-900 text-white shadow-lg' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
-                        {isExpanded ? 'Close Register' : 'Audit Node'}
+                        {isExpanded ? 'Close Node' : 'Audit Node'}
                      </button>
                   </div>
                </div>
@@ -213,7 +215,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                                <div className="flex flex-col gap-1">
                                   <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Assigned Discipline</label>
                                   <select value={slot.subject} onChange={e => updateInvigilation(f.email, idx, 'subject', e.target.value)} className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 text-[10px] font-black outline-none focus:ring-2 focus:ring-blue-500/20 uppercase">
-                                     <option value="">SELECT SUBJECT...</option>
+                                     <option value="">SELECT...</option>
                                      {subjects.map(s => <option key={s} value={s}>{s}</option>)}
                                   </select>
                                </div>

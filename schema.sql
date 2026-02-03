@@ -1,6 +1,6 @@
 
 -- ==========================================================
--- UNITED BAYLOR ACADEMY: UNIFIED DATA HUB v9.5 (Global Node Sync)
+-- UNITED BAYLOR ACADEMY: UNIFIED DATA HUB v9.5.2 (Global Node Sync)
 -- ==========================================================
 -- PURPOSE: 100% Data Capture for Assessment, Financials, and Ops.
 -- INTEGRATION: Cross-Platform Handshake between Assessment & Companion App.
@@ -14,9 +14,9 @@ CREATE TABLE IF NOT EXISTS public.uba_identities (
     hub_id TEXT NOT NULL,          -- Regional Controller ID (SMA-HQ)
     role TEXT NOT NULL,            -- super_admin, school_admin, facilitator, pupil
     teaching_category TEXT DEFAULT 'BASIC_SUBJECT_LEVEL', 
-    unique_code TEXT UNIQUE,       -- Secure PIN for Gateway Access (e.g., UBA-HQ-MASTER-2025)
+    unique_code TEXT UNIQUE,       -- Secure PIN for Gateway Access
     phone_number TEXT,             
-    node_metadata JSONB,           -- Captures Device Fingerprints/Preferences
+    node_metadata JSONB DEFAULT '{}'::jsonb, -- Captures Device Fingerprints/Preferences
     merit_balance DOUBLE PRECISION DEFAULT 0,    -- Question Credits
     monetary_balance DOUBLE PRECISION DEFAULT 0, -- GHS Vault Value
     last_synced_at TIMESTAMPTZ DEFAULT NOW(),
@@ -29,23 +29,23 @@ CREATE TABLE IF NOT EXISTS public.uba_pupils (
     student_id TEXT UNIQUE,        -- Primary Relational Key
     name TEXT NOT NULL,
     gender TEXT CHECK (gender IN ('M', 'F', 'Other')),
-    class_name TEXT NOT NULL,      -- e.g. 'Basic 1A', 'Nursery 2'
-    hub_id TEXT NOT NULL,          -- SMA-HQ Link
+    class_name TEXT NOT NULL,      -- e.g. 'Basic 9'
+    hub_id TEXT NOT NULL,          
     is_jhs_level BOOLEAN DEFAULT FALSE, 
-    enrollment_status TEXT DEFAULT 'ACTIVE', -- ACTIVE, GRADUATED, WITHDRAWN
-    performance_category TEXT,      -- ELITE, STABLE, AT_RISK
+    enrollment_status TEXT DEFAULT 'ACTIVE',
+    performance_category TEXT,      
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. PERSISTENCE HUB: Global AppState Sharding (100% Data Capture)
+-- 3. PERSISTENCE HUB: Global AppState Sharding
 CREATE TABLE IF NOT EXISTS public.uba_persistence (
-    id TEXT PRIMARY KEY,           -- daily_activity_{hub_id}_{node_id}
+    id TEXT PRIMARY KEY,           
     hub_id TEXT NOT NULL,                
     payload JSONB NOT NULL,        -- Full AppState Object
-    checksum TEXT,                 -- Verification hash
-    version_tag TEXT DEFAULT 'v9.5.0',
+    checksum TEXT,                 
+    version_tag TEXT DEFAULT 'v9.5.2',
     last_updated TIMESTAMPTZ DEFAULT NOW(),
-    updated_by TEXT                -- Email of last staff to sync
+    updated_by TEXT                
 );
 
 -- 4. ACTIVITY LEDGER: Institutional Audit Trail
@@ -53,12 +53,12 @@ CREATE TABLE IF NOT EXISTS public.uba_activity_logs (
     id BIGSERIAL PRIMARY KEY,
     node_id TEXT NOT NULL,
     staff_id TEXT NOT NULL,
-    action_type TEXT NOT NULL,     -- SCORE_UPDATE, PLAN_SYNC, PUPIL_ADD
-    context_data JSONB,            -- Captures change delta
+    action_type TEXT NOT NULL,     
+    context_data JSONB,            
     timestamp TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. TRANSACTION LEDGER: 100% Financial/Asset Data Capture
+-- 5. TRANSACTION LEDGER: Financial Data Capture
 CREATE TABLE IF NOT EXISTS public.uba_transaction_ledger (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     identity_email TEXT NOT NULL,
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS public.uba_transaction_ledger (
 
 -- 6. MESSAGING HUB: Internal Node Communications
 CREATE TABLE IF NOT EXISTS public.uba_messages (
-    id TEXT PRIMARY KEY,
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     from_node TEXT NOT NULL,
     to_node TEXT NOT NULL,
     message_body TEXT NOT NULL,
@@ -94,7 +94,7 @@ ON CONFLICT (email) DO UPDATE SET
     teaching_category = EXCLUDED.teaching_category,
     unique_code = EXCLUDED.unique_code;
 
--- UNITED BAYLOR ACADEMY PRIMARY ADMIN (LOCAL ADMIN)
+-- UNITED BAYLOR ACADEMY PRIMARY ADMIN
 INSERT INTO public.uba_identities (email, full_name, node_id, hub_id, role, teaching_category, unique_code)
 VALUES ('admin@unitedbaylor.edu.gh', 'UNITED BAYLOR ADMIN', 'UB-MASTER-001', 'SMA-HQ', 'school_admin', 'ADMINISTRATOR', 'UBA-MASTER-2025')
 ON CONFLICT (email) DO UPDATE SET 

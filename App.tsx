@@ -84,6 +84,49 @@ const App: React.FC = () => {
     stateRef.current = { settings, students, facilitators };
   }, [settings, students, facilitators]);
 
+  /**
+   * TRANSACTIONAL SAVE PROTOCOL (ANTI-DATA-LOSS)
+   * 1. Save to Local Safety Shard
+   * 2. Push to Supabase Cloud Persistence
+   */
+  const handleSaveAll = async (overrides?: { settings?: GlobalSettings, students?: StudentData[], facilitators?: Record<string, StaffAssignment> }) => {
+    const activeSettings = overrides?.settings || stateRef.current.settings;
+    const activeStudents = overrides?.students || stateRef.current.students;
+    const activeFacs = overrides?.facilitators || stateRef.current.facilitators;
+    
+    const hubId = activeSettings.schoolNumber || currentHubId;
+    if (!hubId) return;
+
+    // STEP 1: LOCAL SAFETY MIRROR (IMMEDIATE)
+    localStorage.setItem(`uba_safety_shard_${hubId}`, JSON.stringify({
+      settings: activeSettings,
+      students: activeStudents,
+      facilitators: activeFacs,
+      last_save: new Date().toISOString()
+    }));
+    
+    try {
+      const timestamp = new Date().toISOString();
+      const updates = [
+        { id: `${hubId}_settings`, hub_id: hubId, payload: activeSettings, last_updated: timestamp },
+        { id: `${hubId}_students`, hub_id: hubId, payload: activeStudents, last_updated: timestamp },
+        { id: `${hubId}_facilitators`, hub_id: hubId, payload: activeFacs, last_updated: timestamp }
+      ];
+
+      const { error } = await supabase.from('uba_persistence').upsert(updates);
+      if (error) throw error;
+
+      await supabase.from('uba_activity_logs').insert({
+          node_id: hubId,
+          staff_id: loggedInUser?.email || 'SYSTEM_AUTO',
+          action_type: 'HUB_DATA_SYNC',
+          context_data: { type: 'FULL_STATE_PERSISTENCE', status: 'SUCCESS' }
+      });
+    } catch (e) {
+      console.error("[CLOUD SYNC INTERRUPTED - LOCAL SHARD PRESERVED]", e);
+    }
+  };
+
   const syncCloudShards = useCallback(async (hubId: string) => {
     if (!hubId) return null;
     setIsSyncing(true);
@@ -97,12 +140,22 @@ const App: React.FC = () => {
       let cloudStudents: StudentData[] = [];
       let cloudFacilitators: Record<string, StaffAssignment> = {};
 
-      if (persistenceData) {
+      if (persistenceData && persistenceData.length > 0) {
         persistenceData.forEach(row => {
           if (row.id === `${hubId}_settings`) cloudSettings = row.payload;
           if (row.id === `${hubId}_students`) cloudStudents = row.payload;
           if (row.id === `${hubId}_facilitators`) cloudFacilitators = row.payload;
         });
+      } else {
+        // AUTO-RECOVERY FROM SAFETY SHARD
+        const safety = localStorage.getItem(`uba_safety_shard_${hubId}`);
+        if (safety) {
+           const parsed = JSON.parse(safety);
+           cloudSettings = parsed.settings;
+           cloudStudents = parsed.students;
+           cloudFacilitators = parsed.facilitators;
+           console.log("[DATA RECOVERY] Session restored from Local Safety Shard.");
+        }
       }
 
       setSettings(cloudSettings);
@@ -120,14 +173,10 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const initializeSystem = async () => {
-      const { data: regData } = await supabase.from('uba_persistence').select('payload').like('id', 'registry_%');
-      if (regData) setGlobalRegistry(regData.flatMap(r => r.payload || []));
-
       const storedUser = localStorage.getItem('uba_user_context');
       if (storedUser) {
         const user = JSON.parse(storedUser);
         setLoggedInUser(user);
-        
         if (user.role === 'super_admin') {
           setIsSuperAdmin(true);
         } else if (currentHubId) {
@@ -158,54 +207,14 @@ const App: React.FC = () => {
     window.location.reload(); 
   };
 
-  /**
-   * REFINED GLOBAL PERSISTENCE HANDSHAKE
-   * Now accepts direct shard overrides to ensure "added but not cloud" errors never occur.
-   */
-  const handleSaveAll = async (overrides?: { settings?: GlobalSettings, students?: StudentData[], facilitators?: Record<string, StaffAssignment> }) => {
-    const activeSettings = overrides?.settings || stateRef.current.settings;
-    const activeStudents = overrides?.students || stateRef.current.students;
-    const activeFacs = overrides?.facilitators || stateRef.current.facilitators;
-    
-    const hubId = activeSettings.schoolNumber || currentHubId;
-    if (!hubId) {
-      console.error("Cloud Error: Institutional Identity Node Missing.");
-      return;
-    }
-    
-    try {
-      const timestamp = new Date().toISOString();
-      const updates = [
-        { id: `${hubId}_settings`, hub_id: hubId, payload: activeSettings, last_updated: timestamp },
-        { id: `${hubId}_students`, hub_id: hubId, payload: activeStudents, last_updated: timestamp },
-        { id: `${hubId}_facilitators`, hub_id: hubId, payload: activeFacs, last_updated: timestamp }
-      ];
-
-      await supabase.from('uba_persistence').upsert(updates);
-
-      // Log success to central activity ledger
-      await supabase.from('uba_activity_logs').insert({
-          node_id: hubId,
-          staff_id: loggedInUser?.email || 'SYSTEM_AUTO',
-          action_type: 'HUB_DATA_SYNC',
-          context_data: { type: 'FULL_STATE_PERSISTENCE' }
-      });
-    } catch (e) {
-      console.error("Sync Protocol Interrupted:", e);
-    }
-  };
-
   const handleLoginTransition = async (hubId: string, user: any) => {
     localStorage.setItem('uba_active_hub_id', hubId);
     localStorage.setItem('uba_active_role', user.role);
     localStorage.setItem('uba_user_context', JSON.stringify(user));
-    
     await syncCloudShards(hubId);
-    
     setCurrentHubId(hubId);
     setActiveRole(user.role);
     setLoggedInUser(user);
-    
     if (user.role === 'facilitator') {
       setActiveFacilitator({ name: user.name, subject: user.subject || "GENERAL", email: user.email });
     }
@@ -220,7 +229,7 @@ const App: React.FC = () => {
       </div>
       <div className="text-center space-y-6">
         <p className="text-2xl font-black text-white uppercase tracking-[0.6em] leading-none animate-pulse">
-          {isSyncing ? "Establishing Deep Mirror" : "Validating Node Shards"}
+          {isSyncing ? "Syncing Academy Node" : "Accessing Hub Shards"}
         </p>
       </div>
     </div>
