@@ -34,7 +34,7 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     const hubId = settings.schoolNumber || "SMA-UBA-NODE-2025";
     const nodeId = nextId.toString();
 
-    // 1. IDENTITY RECALL SYNC (IDENTITY HUB)
+    // 1. IDENTITY HUB SYNC
     const { error: idError } = await supabase.from('uba_identities').upsert({
       email: targetEmail,
       full_name: targetName,
@@ -44,10 +44,9 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
       teaching_category: 'BASIC_SUBJECT_LEVEL'
     });
 
-    if (idError) throw new Error(`Identity Node Fault for ${targetName}: ` + idError.message);
+    if (idError) throw idError;
 
-    // 2. SHARED PUPIL REGISTRY (COMPANION APP HANDSHAKE)
-    // Structured data synchronization for Basic 9 Activity App
+    // 2. SHARED PUPIL REGISTRY
     await supabase.from('uba_pupils').upsert({
       student_id: nodeId,
       name: targetName,
@@ -66,7 +65,7 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
       parentContact: data.parentContact || "",
       parentEmail: (data.parentEmail || "").toLowerCase().trim(),
       attendance: 0, scores: {}, sbaScores: {}, examSubScores: {}, mockData: {}
-    };
+    } as StudentData;
   };
 
   const handleAddOrUpdateStudent = async (e: React.FormEvent) => {
@@ -103,7 +102,6 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     }
   };
 
-  // ... rest of the component (CSV, template, etc) ...
   const handleDownloadTemplate = () => {
     const headers = ["Name", "Email", "Gender", "GuardianName", "ParentContact", "ParentEmail"];
     const example = ["KOFI ADU", "kofi@example.com", "M", "SAMUEL ADU", "0243504091", "sam@example.com"];
@@ -117,37 +115,66 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
   const handleBulkCSVUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    
     const reader = new FileReader();
     reader.onload = async (e) => {
       const text = e.target?.result as string;
       const lines = text.split(/\r?\n/).filter(line => line.trim() !== "");
       if (lines.length < 2) return;
+
       setBulkProcessing(true);
-      const newEntries: StudentData[] = [];
-      let currentId = students.length > 0 ? Math.max(...students.map(s => s.id)) : 100;
       const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
+      
       const getCol = (row: string[], key: string) => {
         const idx = headers.indexOf(key.toLowerCase());
         return idx !== -1 ? row[idx]?.trim() : "";
       };
+
+      let currentId = students.length > 0 ? Math.max(...students.map(s => s.id)) : 100;
+      const enrollmentPromises = [];
+
       for (let i = 1; i < lines.length; i++) {
-        try {
-          const cols = lines[i].split(",");
-          const pData = { name: getCol(cols, "name"), email: getCol(cols, "email"), gender: getCol(cols, "gender") || "M", guardianName: getCol(cols, "guardianname"), parentContact: getCol(cols, "parentcontact"), parentEmail: getCol(cols, "parentemail") };
-          if (!pData.name || !pData.email) continue;
+        const cols = lines[i].split(",");
+        if (cols.length < 2) continue;
+
+        const pData = {
+          name: getCol(cols, "name"),
+          email: getCol(cols, "email"),
+          gender: getCol(cols, "gender") || "M",
+          guardianName: getCol(cols, "guardianname"),
+          parentContact: getCol(cols, "parentcontact"),
+          parentEmail: getCol(cols, "parentemail")
+        };
+
+        if (pData.name && pData.email) {
           currentId++;
-          const enrolled = await enrollStudentAction(pData, currentId);
-          newEntries.push(enrolled);
-        } catch (err) {}
+          enrollmentPromises.push(enrollStudentAction(pData, currentId));
+        }
       }
-      if (newEntries.length > 0) {
-        const finalSet = [...students, ...newEntries];
-        setStudents(finalSet);
-        const hubId = settings.schoolNumber;
-        await supabase.from('uba_persistence').upsert({ id: `${hubId}_students`, hub_id: hubId, payload: finalSet, last_updated: new Date().toISOString() });
-        alert(`MASS ENROLMENT COMPLETE: ${newEntries.length} Identity shards propagated.`);
+
+      try {
+        const newEntries = await Promise.all(enrollmentPromises);
+        if (newEntries.length > 0) {
+          const finalSet = [...students, ...newEntries];
+          setStudents(finalSet);
+          
+          // Single batch persistence update
+          const hubId = settings.schoolNumber;
+          await supabase.from('uba_persistence').upsert({ 
+            id: `${hubId}_students`, 
+            hub_id: hubId, 
+            payload: finalSet, 
+            last_updated: new Date().toISOString() 
+          });
+
+          alert(`MASS ENROLMENT COMPLETE: ${newEntries.length} Identity shards propagated.`);
+        }
+      } catch (err: any) {
+        alert("Bulk Enrolment interrupted: " + err.message);
+      } finally {
+        setBulkProcessing(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
-      setBulkProcessing(false);
     };
     reader.readAsText(file);
   };

@@ -13,11 +13,9 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
   const [selectedSubject, setSelectedSubject] = useState(activeFacilitator?.taughtSubject || subjects[0]);
   const [masterBank, setMasterBank] = useState<MasterQuestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
   const [collectedQs, setCollectedQs] = useState<MasterQuestion[]>([]);
   
-  const [filterStrand, setFilterStrand] = useState('ALL');
-  const [filterSubStrand, setFilterSubStrand] = useState('ALL');
-
   const fetchBank = useCallback(async () => {
     setIsLoading(true);
     const bankId = `master_bank_${selectedSubject.trim().replace(/\s+/g, '')}`;
@@ -38,47 +36,81 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
     
     if (!isAcquired) {
        if (window.confirm(`ACQUIRE SHARD: Spend 1 Merit Token to unlock this question in real-time?`)) {
-          await handleLedgerDebit(q, 'DATA_ACQUISITION', 'Debit: Unlocked network shard.');
-          activeFacilitator?.account?.unlockedQuestionIds.push(q.id);
+          setIsProcessingAction(true);
+          const success = await handleBatchLedgerDebit([q.id], 'DATA_ACQUISITION', 'Debit: Unlocked network shard.');
+          setIsProcessingAction(false);
+          if (success) {
+            activeFacilitator?.account?.unlockedQuestionIds.push(q.id);
+          } else return;
        } else return;
     }
 
     setCollectedQs(prev => prev.some(x => x.id === q.id) ? prev.filter(x => x.id !== q.id) : [...prev, q]);
   };
 
-  const handleLedgerDebit = async (q: MasterQuestion, category: string, desc: string) => {
-     if (!activeFacilitator?.email) return;
+  const handleBatchLedgerDebit = async (qIds: string[], category: string, desc: string): Promise<boolean> => {
+     if (!activeFacilitator?.email) return false;
+     const totalDebit = qIds.length;
+
      try {
         const { data: ident } = await supabase.from('uba_identities').select('merit_balance').eq('email', activeFacilitator.email).single();
-        if ((ident?.merit_balance || 0) < 1) return alert("Insufficient credits.");
+        if ((ident?.merit_balance || 0) < totalDebit) {
+          alert(`Insufficient credits. Required: ${totalDebit}, Available: ${ident?.merit_balance || 0}`);
+          return false;
+        }
 
-        await supabase.from('uba_identities').update({ merit_balance: ident!.merit_balance - 1 }).eq('email', activeFacilitator.email);
+        // Atomic update of identity balance
+        const { error: updateError } = await supabase
+          .from('uba_identities')
+          .update({ merit_balance: ident!.merit_balance - totalDebit })
+          .eq('email', activeFacilitator.email);
+        
+        if (updateError) throw updateError;
+
+        // Single ledger entry for the batch
         await supabase.from('uba_transaction_ledger').insert({
            identity_email: activeFacilitator.email,
            hub_id: settings.schoolNumber,
            event_category: category,
            type: 'DEBIT',
            asset_type: 'MERIT_TOKEN',
-           amount: 1,
+           amount: totalDebit,
            description: desc,
-           reference_ids: [q.id],
-           metadata: { subject: selectedSubject }
+           reference_ids: qIds,
+           metadata: { subject: selectedSubject, count: qIds.length }
         });
-     } catch (e) { console.error(e); }
+
+        return true;
+     } catch (e) { 
+        console.error(e); 
+        alert("Transaction Failed: Network handshake interrupted.");
+        return false;
+     }
   };
 
   const handleDownloadSelectedText = async () => {
     if (collectedQs.length === 0) return alert("Select shards to download.");
-    if (!window.confirm(`100% DATA CAPTURE NOTICE: Downloading these ${collectedQs.length} shards will cost 1 token per question. Proceed with real-time debit?`)) return;
+    
+    // Check if any selected items are locked
+    const lockedIds = collectedQs
+      .filter(q => !activeFacilitator?.account?.unlockedQuestionIds.includes(q.id) && q.facilitatorCode !== activeFacilitator?.uniqueCode)
+      .map(q => q.id);
 
-    // Real-time Debit for all downloaded items
-    for (const q of collectedQs) {
-       await handleLedgerDebit(q, 'DATA_DOWNLOAD', 'Debit: External Data Extraction (.txt)');
+    if (lockedIds.length > 0) {
+      if (!window.confirm(`BULK DOWNLOAD: You have ${lockedIds.length} locked items in your selection. Proced with batch unlock (1 token per item)?`)) return;
+      
+      setIsProcessingAction(true);
+      const success = await handleBatchLedgerDebit(lockedIds, 'DATA_DOWNLOAD', `Bulk Unlock: ${lockedIds.length} shards for extraction.`);
+      setIsProcessingAction(false);
+      if (!success) return;
+      
+      // Update local unlock state
+      lockedIds.forEach(id => activeFacilitator?.account?.unlockedQuestionIds.push(id));
     }
 
     let content = `UNITED BAYLOR ACADEMY EXPORT\nSUBJECT: ${selectedSubject.toUpperCase()}\n----------------------------------\n\n`;
     collectedQs.forEach((q, idx) => {
-      content += `[${idx + 1}] ${q.questionText}\nKey: ${q.correctKey}\n\n`;
+      content += `[${idx + 1}] ${q.questionText}\nKEY/SCHEME: ${q.correctKey}\nSTRAND: ${q.strand}\n\n`;
     });
 
     const blob = new Blob([content], { type: 'text/plain' });
@@ -89,10 +121,18 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
     link.click();
     URL.revokeObjectURL(url);
     setCollectedQs([]);
+    alert("EXTRACTION SUCCESSFUL: Data mirrored to local text file.");
   };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 font-sans pb-20">
+      {isProcessingAction && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex flex-col items-center justify-center space-y-6">
+           <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+           <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Processing Network Transaction...</p>
+        </div>
+      )}
+
       <div className="bg-slate-950 text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/10 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
         <div className="relative flex justify-between items-center gap-8">
