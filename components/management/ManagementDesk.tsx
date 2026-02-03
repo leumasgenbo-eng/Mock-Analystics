@@ -39,7 +39,6 @@ interface ManagementDeskProps {
   onLoadDummyData: () => void;
   onClearData: () => void;
   isFacilitator?: boolean;
-  // Fix: activeFacilitator now typed as simplified identity object expected by core sub-portals
   activeFacilitator?: { name: string; subject: string; email?: string } | null;
   loggedInUser?: { name: string; nodeId: string } | null;
 }
@@ -97,12 +96,10 @@ const ManagementDesk: React.FC<ManagementDeskProps> = ({
               subjects={subjects} 
               processedSnapshot={processedSnapshot} 
               onSave={onSave}
-              // Fix: activeFacilitator simplified shape matches ScoreEntryPortal requirement
               activeFacilitator={activeFacilitator}
             />
           )}
           {activeTab === 'facilitatorDesk' && <FacilitatorDesk students={students} setStudents={setStudents} settings={settings} onSettingChange={onSettingChange} onSave={onSave} />}
-          {/* Fix: Resolved full StaffAssignment record for account view using dictionary lookup */}
           {activeTab === 'facilitatorAccount' && activeFacilitator?.email && facilitators[activeFacilitator.email] && (
             <FacilitatorAccountHub activeFacilitator={facilitators[activeFacilitator.email]} settings={settings} />
           )}
@@ -118,22 +115,18 @@ const ManagementDesk: React.FC<ManagementDeskProps> = ({
           )}
           {activeTab === 'likelyQuestions' && (
             <LikelyQuestionDesk 
-              // Fix: Passed full record to LikelyQuestionDesk using email lookup
               activeFacilitator={activeFacilitator?.email ? facilitators[activeFacilitator.email] : null} 
               schoolName={settings.schoolName} 
               subjects={subjects} 
               facilitators={facilitators} 
               isAdmin={!isFacilitator}
-              // Added missing settings prop to resolve build error
               settings={settings}
             />
           )}
           {activeTab === 'questionsBank' && (
             <SubjectQuestionsBank 
-              // Fix: Passed full record to SubjectQuestionsBank using email lookup
               activeFacilitator={activeFacilitator?.email ? facilitators[activeFacilitator.email] : null} 
               subjects={subjects} 
-              // Fix: Added missing settings prop to resolve TypeScript error on line 132
               settings={settings}
             />
           )}
@@ -167,11 +160,18 @@ const ManagementDesk: React.FC<ManagementDeskProps> = ({
           )}
           {activeTab === 'credentials' && <SchoolCredentialView settings={settings} studentCount={students.length} />}
           {activeTab === 'pupils' && <PupilSBAPortal students={students} setStudents={setStudents} settings={settings} subjects={subjects} onSave={onSave} />}
-          {/* Fix: Added missing onSave prop to FacilitatorPortal to satisfy its FacilitatorPortalProps interface */}
           {activeTab === 'facilitators' && <FacilitatorPortal subjects={subjects} facilitators={facilitators} setFacilitators={setFacilitators} settings={settings} onSave={onSave} />}
           {activeTab === 'grading' && <GradingConfigPortal settings={settings} onSettingChange={onSettingChange} />}
           {activeTab === 'history' && <SeriesHistoryPortal students={students} settings={settings} />}
-          {activeTab === 'resources' && <MockResourcesPortal settings={settings} onSettingChange={onSettingChange} subjects={subjects} />}
+          {activeTab === 'resources' && (
+            <MockResourcesPortal 
+               settings={settings} 
+               onSettingChange={onSettingChange} 
+               subjects={subjects} 
+               isFacilitator={isFacilitator}
+               activeFacilitator={activeFacilitator}
+            />
+          )}
         </div>
       </div>
     </div>
