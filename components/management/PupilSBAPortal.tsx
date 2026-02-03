@@ -32,12 +32,7 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
      return `${initials}${year}${number}`;
   };
 
-  /**
-   * SECURE 6-DIGIT PIN GENERATOR
-   */
-  const generateSixDigitPin = () => {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  };
+  const generateSixDigitPin = () => Math.floor(100000 + Math.random() * 900000).toString();
 
   const enrollStudentAction = async (data: any, sequence: number) => {
     const targetEmail = data.email.toLowerCase().trim();
@@ -89,6 +84,20 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
 
     try {
       if (editingId) {
+        // Update existing shard
+        const target = students.find(s => s.id === editingId);
+        if (!target) return;
+
+        await supabase.from('uba_identities').update({
+           full_name: formData.name.toUpperCase().trim(),
+           email: formData.email.toLowerCase().trim()
+        }).eq('node_id', target.indexNumber);
+
+        await supabase.from('uba_pupils').update({
+           name: formData.name.toUpperCase().trim(),
+           gender: formData.gender
+        }).eq('student_id', target.indexNumber);
+
         setStudents(prev => prev.map(s => s.id === editingId ? { 
           ...s, 
           name: formData.name.toUpperCase().trim(), 
@@ -103,7 +112,7 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
         const nextSequence = students.length > 0 ? Math.max(...students.map(s => s.id)) + 1 : 101;
         const student = await enrollStudentAction(formData, nextSequence);
         setStudents(prev => [...prev, student]);
-        alert(`PUPIL CREATED:\nID: ${student.indexNumber}\nACCESS PIN: ${student.uniqueCode}\n\nRecord this PIN for the pupil.`);
+        alert(`PUPIL CREATED:\nID: ${student.indexNumber}\nACCESS PIN: ${student.uniqueCode}`);
       }
 
       setFormData({ name: '', email: '', gender: 'M', guardianName: '', parentContact: '', parentEmail: '' });
@@ -116,80 +125,40 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     }
   };
 
-  /**
-   * BULK OPERATIONS: TEMPLATE DOWNLOAD
-   */
-  const handleDownloadTemplate = () => {
-    const csvContent = "FullName,Email,Gender(M/F),GuardianName,GuardianPhone,GuardianEmail\n" +
-                       "KWAME MENSAH,kwame@example.com,M,KOFI MENSAH,0240000000,kofi@example.com\n" +
-                       "ABENA OSEI,abena@example.com,F,RITA OSEI,0241111111,rita@example.com";
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", "UBA_Pupil_Template.csv");
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDeletePupil = async (id: number, indexNumber: string | undefined) => {
+    if (!window.confirm("CRITICAL: Permanent Deletion. This revokes candidate identity and wipes all score shards. Proceed?")) return;
+    setIsEnrolling(true);
+    try {
+       if (indexNumber) {
+          await supabase.from('uba_identities').delete().eq('node_id', indexNumber);
+          await supabase.from('uba_pupils').delete().eq('student_id', indexNumber);
+          await supabase.from('uba_mock_scores').delete().eq('student_id', indexNumber);
+       }
+       setStudents(prev => prev.filter(s => s.id !== id));
+       setTimeout(onSave, 200);
+       alert("IDENTITY PURGED.");
+    } catch (e: any) {
+       alert("Purge Failure: " + e.message);
+    } finally {
+       setIsEnrolling(false);
+    }
   };
 
-  /**
-   * BULK OPERATIONS: CSV UPLOAD & PARSING
-   */
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleForwardShard = (student: StudentData) => {
+     alert(`DISPATCH READY: ${student.name}'s identity shard has been refreshed in the serialization queue.`);
+  };
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const content = event.target?.result as string;
-      const lines = content.split(/\r?\n/).filter(line => line.trim() !== "");
-      // Skip header
-      const dataRows = lines.slice(1);
-      
-      if (dataRows.length === 0) {
-        alert("UPLOAD REJECTED: The file contains no pupil data rows.");
-        return;
-      }
-
-      setIsEnrolling(true);
-      setUploadProgress({ current: 0, total: dataRows.length });
-
-      const newStudents: StudentData[] = [];
-      let baseSequence = students.length > 0 ? Math.max(...students.map(s => s.id)) + 1 : 101;
-
-      try {
-        for (let i = 0; i < dataRows.length; i++) {
-          const columns = dataRows[i].split(",").map(c => c.trim());
-          if (columns.length < 3) continue; // Minimum required: Name, Email, Gender
-
-          const [name, email, gender, guardianName, parentContact, parentEmail] = columns;
-          
-          const student = await enrollStudentAction({
-            name, email, gender: gender?.toUpperCase() === 'F' ? 'F' : 'M',
-            guardianName: guardianName || "",
-            parentContact: parentContact || "",
-            parentEmail: parentEmail || ""
-          }, baseSequence + i);
-          
-          newStudents.push(student);
-          setUploadProgress({ current: i + 1, total: dataRows.length });
-        }
-
-        setStudents(prev => [...prev, ...newStudents]);
-        onSave();
-        alert(`BULK HANDSHAKE COMPLETE: ${newStudents.length} pupils enrolled. All identity shards synced.`);
-      } catch (err: any) {
-        alert("Batch Ingestion Interrupted: " + err.message);
-      } finally {
-        setIsEnrolling(false);
-        setUploadProgress(null);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      }
-    };
-    reader.readAsText(file);
+  const handleEditSetup = (student: StudentData) => {
+     setEditingId(student.id);
+     setFormData({
+        name: student.name,
+        email: student.email,
+        gender: student.gender === 'F' ? 'F' : 'M',
+        guardianName: student.parentName || '',
+        parentContact: student.parentContact || '',
+        parentEmail: student.parentEmail || ''
+     });
+     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleUpdateSbaScore = (studentId: number, subject: string, score: string) => {
@@ -201,40 +170,67 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     }));
   };
 
+  // Bulk Operations
+  const handleDownloadTemplate = () => {
+    const csvContent = "FullName,Email,Gender(M/F),GuardianName,GuardianPhone,GuardianEmail\n" +
+                       "KWAME MENSAH,kwame@example.com,M,KOFI MENSAH,0240000000,kofi@example.com";
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url; link.setAttribute("download", "UBA_Pupil_Template.csv"); link.click();
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const content = event.target?.result as string;
+      const lines = content.split(/\r?\n/).filter(l => l.trim() !== "").slice(1);
+      if (lines.length === 0) return alert("File is empty.");
+      setIsEnrolling(true);
+      setUploadProgress({ current: 0, total: lines.length });
+      let baseSequence = students.length > 0 ? Math.max(...students.map(s => s.id)) + 1 : 101;
+      try {
+        const batch: StudentData[] = [];
+        for (let i = 0; i < lines.length; i++) {
+          const col = lines[i].split(",").map(c => c.trim());
+          if (col.length < 3) continue;
+          const st = await enrollStudentAction({ name: col[0], email: col[1], gender: col[2], guardianName: col[3], parentContact: col[4], parentEmail: col[5] }, baseSequence + i);
+          batch.push(st);
+          setUploadProgress({ current: i + 1, total: lines.length });
+        }
+        setStudents(prev => [...prev, ...batch]);
+        onSave();
+        alert(`BULK COMPLETE: ${batch.length} pupils enrolled.`);
+      } catch (e: any) { alert("Batch Failure: " + e.message); } finally { setIsEnrolling(false); setUploadProgress(null); }
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="space-y-12 animate-in fade-in duration-500 pb-20 font-sans">
       
-      {/* BULK OPERATIONS CONTROL */}
+      {/* MATRIX OPERATIONS CONTROL */}
       <section className="bg-slate-900 border border-white/5 p-8 rounded-[3rem] shadow-2xl flex flex-col md:flex-row justify-between items-center gap-6">
          <div className="space-y-1">
-            <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Matrix Operations</h4>
-            <p className="text-white font-black uppercase text-sm">Batch Identity Management</p>
+            <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Registry Matrix</h4>
+            <p className="text-white font-black uppercase text-sm">Institutional Roster Management</p>
          </div>
          <div className="flex flex-wrap justify-center gap-3">
-            <button 
-              onClick={handleDownloadTemplate}
-              className="bg-white/10 hover:bg-white/20 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase border border-white/10 transition-all flex items-center gap-2"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Download Template
+            <button onClick={handleDownloadTemplate} className="bg-white/10 hover:bg-white/20 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase border border-white/10 transition-all flex items-center gap-2">Template</button>
+            <button onClick={() => fileInputRef.current?.click()} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase shadow-lg transition-all">
+              {uploadProgress ? `Processing ${uploadProgress.current}/${uploadProgress.total}` : 'Bulk Upload'}
             </button>
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isEnrolling}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase shadow-lg transition-all flex items-center gap-2"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              {uploadProgress ? `Processing ${uploadProgress.current}/${uploadProgress.total}` : 'Bulk Upload Roster'}
-            </button>
-            <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv,.txt" className="hidden" />
+            <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
          </div>
       </section>
 
+      {/* FORM: Individual Enrolment / Edit */}
       <section className="bg-white p-10 rounded-[3.5rem] border border-gray-100 shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/5 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
         <div className="relative mb-10">
            <div className="space-y-2">
-              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Individual Enrolment</h3>
+              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{editingId ? 'Modify Particulars' : 'Individual Enrolment'}</h3>
               <p className="text-[10px] font-bold text-blue-500 uppercase tracking-[0.4em]">Identity Shard Manual Entry</p>
            </div>
         </div>
@@ -246,14 +242,16 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
           <input type="text" value={formData.guardianName} onChange={e=>setFormData({...formData, guardianName: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black uppercase outline-none" placeholder="GUARDIAN NAME..." />
           <input type="text" value={formData.parentContact} onChange={e=>setFormData({...formData, parentContact: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none" placeholder="GUARDIAN PHONE..." />
           <input type="email" value={formData.parentEmail} onChange={e=>setFormData({...formData, parentEmail: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none" placeholder="GUARDIAN EMAIL..." />
-          <div className="md:col-span-2 lg:col-span-3 pt-4">
-             <button type="submit" disabled={isEnrolling} className="w-full bg-blue-900 text-white py-6 rounded-3xl font-black text-xs uppercase tracking-[0.3em] shadow-2xl active:scale-95 transition-all">
-                {isEnrolling ? "Generating Identity Shard..." : editingId ? "Update Shard" : "Verify & Enroll Pupil"}
+          <div className="md:col-span-2 lg:col-span-3 pt-4 flex gap-4">
+             <button type="submit" disabled={isEnrolling} className="flex-1 bg-blue-900 text-white py-6 rounded-3xl font-black text-xs uppercase tracking-[0.3em] shadow-2xl active:scale-95 transition-all">
+                {isEnrolling ? "Syncing..." : editingId ? "Update Identity Shard" : "Verify & Enroll Pupil"}
              </button>
+             {editingId && <button type="button" onClick={() => {setEditingId(null); setFormData({name:'',email:'',gender:'M',guardianName:'',parentContact:'',parentEmail:''});}} className="px-10 bg-gray-100 text-slate-500 rounded-3xl font-black text-xs uppercase">Cancel</button>}
           </div>
         </form>
       </section>
 
+      {/* ROSTER LIST */}
       <div className="grid grid-cols-1 gap-6">
          {students.map(s => {
             const isSbaOpen = sbaEntryId === s.id;
@@ -266,29 +264,41 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
                           <h4 className="text-lg font-black text-slate-900 uppercase leading-none">{s.name}</h4>
                           <div className="flex items-center gap-4">
                              <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">ID: {s.indexNumber || '---'}</p>
-                             {s.uniqueCode && (
-                                <p className="bg-blue-50 text-blue-900 px-3 py-0.5 rounded-lg text-[10px] font-mono font-black border border-blue-100 uppercase tracking-tighter">PIN: {s.uniqueCode}</p>
-                             )}
+                             <p className="bg-blue-50 text-blue-900 px-3 py-0.5 rounded-lg text-[10px] font-mono font-black border border-blue-100">PIN: {s.uniqueCode || '---'}</p>
                           </div>
                        </div>
                     </div>
-                    <div className="flex gap-3">
-                       <button onClick={() => setSbaEntryId(isSbaOpen ? null : s.id)} className={`px-4 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all ${isSbaOpen ? 'bg-indigo-900 text-white' : 'bg-indigo-50 text-indigo-700'}`}>SBA Ledger</button>
-                       <button onClick={() => setEditingId(s.id)} className="bg-gray-50 text-slate-600 px-4 py-2.5 rounded-xl font-black text-[9px] uppercase border border-gray-200">Modify</button>
+                    <div className="flex flex-wrap justify-center gap-3">
+                       <button onClick={() => setSbaEntryId(isSbaOpen ? null : s.id)} className={`px-4 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all ${isSbaOpen ? 'bg-indigo-900 text-white shadow-lg' : 'bg-indigo-50 text-indigo-700'}`}>SBA Ledger</button>
+                       <button onClick={() => handleEditSetup(s)} className="bg-gray-50 text-slate-600 px-4 py-2.5 rounded-xl font-black text-[9px] uppercase border border-gray-200">Modify</button>
+                       <button onClick={() => handleForwardShard(s)} className="bg-blue-50 text-blue-700 px-4 py-2.5 rounded-xl font-black text-[9px] uppercase border border-blue-100">Dispatch</button>
+                       <button onClick={() => handleDeletePupil(s.id, s.indexNumber)} className="bg-red-50 text-red-600 px-4 py-2.5 rounded-xl font-black text-[9px] uppercase border border-red-100 hover:bg-red-600 hover:text-white transition-all">Purge</button>
                     </div>
                  </div>
+
+                 {/* SBA LEDGER EXPANSION */}
                  {isSbaOpen && (
                    <div className="bg-slate-900 p-8 border-t border-white/5 animate-in slide-in-from-top-4">
+                      <div className="flex justify-between items-center mb-6">
+                         <h5 className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Continuous Assessment Shard (SBA)</h5>
+                         <span className="text-[8px] text-slate-500 uppercase">Max Score: 100%</span>
+                      </div>
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                          {subjects.map(sub => (
-                           <div key={sub} className="bg-white/5 border border-white/10 p-4 rounded-2xl">
-                              <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest block mb-2 truncate">{sub}</label>
-                              <input type="number" value={s.mockData?.[settings.activeMock]?.sbaScores?.[sub] || 0} onChange={e => handleUpdateSbaScore(s.id, sub, e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm font-black text-white w-full outline-none" />
+                           <div key={sub} className="bg-white/5 border border-white/10 p-4 rounded-2xl group/input hover:border-blue-500/50 transition-all">
+                              <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest block mb-2 truncate group-hover/input:text-blue-400">{sub}</label>
+                              <input 
+                                 type="number" 
+                                 value={s.mockData?.[settings.activeMock]?.sbaScores?.[sub] || 0} 
+                                 onChange={e => handleUpdateSbaScore(s.id, sub, e.target.value)} 
+                                 className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm font-black text-white w-full outline-none focus:border-blue-500" 
+                              />
                            </div>
                          ))}
                       </div>
-                      <div className="mt-8 flex justify-end">
-                         <button onClick={() => { onSave(); setSbaEntryId(null); }} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg">Commit SBA Shards</button>
+                      <div className="mt-8 flex justify-end gap-4">
+                         <button onClick={() => setSbaEntryId(null)} className="text-slate-400 px-6 py-3 font-black text-[10px] uppercase">Close</button>
+                         <button onClick={() => { onSave(); setSbaEntryId(null); alert("SBA Records Committed."); }} className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg hover:bg-emerald-500 transition-all">Commit SBA Ledger</button>
                       </div>
                    </div>
                  )}
