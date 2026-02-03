@@ -25,10 +25,11 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
 
   useEffect(() => {
      const fetchIdentities = async () => {
+        if (!settings.schoolNumber) return;
         const { data } = await supabase.from('uba_identities').select('*').eq('hub_id', settings.schoolNumber);
         if (data) setIdentities(data);
      };
-     if (settings.schoolNumber) fetchIdentities();
+     fetchIdentities();
   }, [settings.schoolNumber, facilitators]);
 
   const createEmptyRegister = (): InvigilationSlot[] => 
@@ -37,17 +38,20 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
   const handleAddStaff = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newStaff.name || !newStaff.email) return;
+    
     setIsEnrolling(true);
     try {
-      const hubId = settings.schoolNumber || "UBA-NODE-2025";
+      // CRITICAL: Ensure we use the active Institutional Hub ID from settings
+      const hubId = settings.schoolNumber;
+      if (!hubId) throw new Error("Institutional Handshake required. Register the school first.");
+
       const staffId = `STAFF-${Math.floor(1000 + Math.random() * 9000)}`;
       const nodeId = `${hubId}/${staffId}`;
       const targetEmail = newStaff.email.toLowerCase().trim();
       const targetName = newStaff.name.toUpperCase().trim();
       const uniqueCode = newStaff.uniqueCode || `FAC-${Math.floor(100 + Math.random() * 899)}`;
 
-      // 1. PUSH TO CLOUD IDENTITY TABLE
-      // Resiliency: Balances are stored in node_metadata to avoid 'column missing' schema cache errors
+      // 1. MIRROR TO GLOBAL IDENTITY HUB (Auth Table)
       const { error: idError } = await supabase.from('uba_identities').upsert({
         email: targetEmail,
         full_name: targetName,
@@ -57,16 +61,12 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         teaching_category: newStaff.category,
         unique_code: uniqueCode,
         node_metadata: {
-           merit_balance: 0,
-           monetary_balance: 0,
-           enrolled_at: new Date().toISOString()
+           enrolled_at: new Date().toISOString(),
+           system_v: "9.5.0"
         }
       });
 
-      if (idError) {
-        console.warn("Identity Upsert Warning:", idError.message);
-        // We continue anyway to ensure the institutional record is at least saved in persistence
-      }
+      if (idError) throw new Error("Identity Shard Refused: " + idError.message);
 
       const staff: StaffAssignment = {
         name: targetName,
@@ -81,17 +81,18 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         marking: { dateTaken: '', dateReturned: '', inProgress: false }
       };
 
-      // 2. UPDATE LOCAL STATE
+      // 2. UPDATE LOCAL BROWSER STATE
       const nextFacilitators = { ...facilitators, [targetEmail]: staff };
       setFacilitators(nextFacilitators);
-      setNewStaff({ name: '', email: '', role: 'FACILITATOR', subject: '', category: 'BASIC_SUBJECT_LEVEL', uniqueCode: '' });
       
-      // 3. FORCE IMMEDIATE PERSISTENCE SYNC
+      // 3. FORCE IMMEDIATE PERSISTENCE SHARD SYNC (Cloud Table)
+      // This ensures the shard reaches the cloud even if the main App state hasn't caught up.
       await onSave({ facilitators: nextFacilitators });
       
-      alert(`FACULTY SYNC: ${targetName} identity secured in cloud node.`);
+      setNewStaff({ name: '', email: '', role: 'FACILITATOR', subject: '', category: 'BASIC_SUBJECT_LEVEL', uniqueCode: '' });
+      alert(`CLOUD SYNC SUCCESSFUL: ${targetName} is now authorized for ${hubId}.`);
     } catch (err: any) {
-      alert("Enrolment Interrupted: " + (err.message || "Institutional handshake error."));
+      alert("Enrolment Error: " + (err.message || "Institutional handshake error."));
     } finally {
       setIsEnrolling(false);
     }
@@ -117,7 +118,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
          <div className="relative flex flex-col md:flex-row justify-between items-start gap-8">
             <div className="space-y-2">
                <h2 className="text-3xl font-black uppercase tracking-tighter">Faculty Shard Matrix</h2>
-               <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Institutional Account Oversight Node</p>
+               <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Institutional Account Oversight Node: {settings.schoolNumber}</p>
             </div>
          </div>
 
@@ -144,7 +145,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
               </div>
               <div className="flex justify-end">
                 <button type="submit" disabled={isEnrolling} className="bg-blue-600 hover:bg-blue-500 text-white px-12 py-4 rounded-2xl font-black text-[10px] uppercase shadow-lg transition-all active:scale-95">
-                  {isEnrolling ? "SYNCING HUB..." : "Enroll Shared Identity"}
+                  {isEnrolling ? "CONNECTING CLOUD..." : "Enroll to Registry"}
                 </button>
               </div>
            </form>
@@ -179,13 +180,13 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                   
                   <div className="bg-slate-50 px-6 py-4 rounded-3xl border border-gray-100 flex items-center gap-6 shadow-inner">
                      <div className="text-center">
-                        <span className="text-[7px] font-black text-gray-400 uppercase block">Q-Balance</span>
-                        <p className="text-sm font-black text-blue-900 font-mono">{meta.merit_balance || identity?.merit_balance || 0}</p>
+                        <span className="text-[7px] font-black text-gray-400 uppercase block">Cloud Status</span>
+                        <p className={`text-sm font-black uppercase ${identity ? 'text-emerald-500' : 'text-red-500 animate-pulse'}`}>{identity ? 'Verified' : 'Offline'}</p>
                      </div>
                      <div className="w-px h-6 bg-gray-200"></div>
                      <div className="text-center">
-                        <span className="text-[7px] font-black text-gray-400 uppercase block">Vault (GHS)</span>
-                        <p className="text-sm font-black text-emerald-600 font-mono">{(meta.monetary_balance || identity?.monetary_balance || 0).toFixed(2)}</p>
+                        <span className="text-[7px] font-black text-gray-400 uppercase block">Q-Balance</span>
+                        <p className="text-sm font-black text-blue-900 font-mono">{identity?.merit_balance || 0}</p>
                      </div>
                   </div>
 
@@ -221,7 +222,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                        ))}
                     </div>
                     <div className="mt-8 flex justify-center no-print">
-                       <button onClick={() => onSave()} className="bg-slate-900 text-white px-10 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">Force Cloud Handshake</button>
+                       <button onClick={() => onSave()} className="bg-slate-900 text-white px-10 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">Force Cloud Refresh</button>
                     </div>
                  </div>
                )}

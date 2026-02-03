@@ -93,11 +93,6 @@ const App: React.FC = () => {
         .select('id, payload')
         .eq('hub_id', hubId);
       
-      const { data: pupilRegistry } = await supabase
-        .from('uba_pupils')
-        .select('*')
-        .eq('hub_id', hubId);
-
       let cloudSettings = { ...DEFAULT_SETTINGS };
       let cloudStudents: StudentData[] = [];
       let cloudFacilitators: Record<string, StaffAssignment> = {};
@@ -108,29 +103,6 @@ const App: React.FC = () => {
           if (row.id === `${hubId}_students`) cloudStudents = row.payload;
           if (row.id === `${hubId}_facilitators`) cloudFacilitators = row.payload;
         });
-      }
-
-      if (pupilRegistry && pupilRegistry.length > 0) {
-        const mergedStudents = [...cloudStudents];
-        pupilRegistry.forEach(p => {
-          const studentId = parseInt(p.student_id);
-          const exists = mergedStudents.some(cs => cs.id === studentId);
-          if (!exists) {
-            mergedStudents.push({
-              id: studentId,
-              name: p.name.toUpperCase(),
-              email: `${p.student_id}@unitedbaylor.edu`,
-              gender: p.gender || 'M',
-              parentContact: '',
-              attendance: 0,
-              scores: {},
-              sbaScores: {},
-              examSubScores: {},
-              mockData: {}
-            });
-          }
-        });
-        cloudStudents = mergedStudents;
       }
 
       setSettings(cloudSettings);
@@ -159,15 +131,7 @@ const App: React.FC = () => {
         if (user.role === 'super_admin') {
           setIsSuperAdmin(true);
         } else if (currentHubId) {
-          const cloudData = await syncCloudShards(currentHubId);
-          if (user.role === 'facilitator') {
-            setActiveFacilitator({ name: user.name, subject: user.subject || "GENERAL", email: user.email });
-          } else if (user.role === 'pupil' && cloudData) {
-            const s = calculateClassStatistics(cloudData.students, cloudData.settings);
-            const processed = processStudentData(s, cloudData.students, {}, cloudData.settings);
-            const pupil = processed.find(p => p.id === parseInt(user.nodeId));
-            if (pupil) setActivePupil(pupil);
-          }
+          await syncCloudShards(currentHubId);
         }
       }
       setIsInitializing(false);
@@ -195,42 +159,48 @@ const App: React.FC = () => {
   };
 
   /**
-   * GLOBAL PERSISTENCE HUB
-   * Accepts optional overrides to prevent race conditions during heavy sync ops (like adding staff)
+   * REFINED GLOBAL PERSISTENCE HANDSHAKE
+   * Now accepts direct shard overrides to ensure "added but not cloud" errors never occur.
    */
-  const handleSaveAll = async (overrides?: { students?: StudentData[], settings?: GlobalSettings, facilitators?: Record<string, StaffAssignment> }) => {
-    const s = overrides?.settings || stateRef.current.settings;
-    const st = overrides?.students || stateRef.current.students;
-    const f = overrides?.facilitators || stateRef.current.facilitators;
+  const handleSaveAll = async (overrides?: { settings?: GlobalSettings, students?: StudentData[], facilitators?: Record<string, StaffAssignment> }) => {
+    const activeSettings = overrides?.settings || stateRef.current.settings;
+    const activeStudents = overrides?.students || stateRef.current.students;
+    const activeFacs = overrides?.facilitators || stateRef.current.facilitators;
     
-    const hubId = s.schoolNumber || currentHubId;
-    if (!hubId) return;
+    const hubId = activeSettings.schoolNumber || currentHubId;
+    if (!hubId) {
+      console.error("Cloud Error: Institutional Identity Node Missing.");
+      return;
+    }
     
     try {
-      await supabase.from('uba_persistence').upsert([
-        { id: `${hubId}_settings`, hub_id: hubId, payload: s, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email },
-        { id: `${hubId}_students`, hub_id: hubId, payload: st, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email },
-        { id: `${hubId}_facilitators`, hub_id: hubId, payload: f, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email }
-      ]);
+      const timestamp = new Date().toISOString();
+      const updates = [
+        { id: `${hubId}_settings`, hub_id: hubId, payload: activeSettings, last_updated: timestamp },
+        { id: `${hubId}_students`, hub_id: hubId, payload: activeStudents, last_updated: timestamp },
+        { id: `${hubId}_facilitators`, hub_id: hubId, payload: activeFacs, last_updated: timestamp }
+      ];
 
+      await supabase.from('uba_persistence').upsert(updates);
+
+      // Log success to central activity ledger
       await supabase.from('uba_activity_logs').insert({
           node_id: hubId,
-          staff_id: loggedInUser?.email || 'ANONYMOUS',
-          action_type: 'GLOBAL_PERSISTENCE_SYNC',
-          context_data: { student_count: st.length, mock_cycle: s.activeMock }
+          staff_id: loggedInUser?.email || 'SYSTEM_AUTO',
+          action_type: 'HUB_DATA_SYNC',
+          context_data: { type: 'FULL_STATE_PERSISTENCE' }
       });
     } catch (e) {
-      console.error("Cloud Sync Failure:", e);
+      console.error("Sync Protocol Interrupted:", e);
     }
   };
 
   const handleLoginTransition = async (hubId: string, user: any) => {
-    setIsSyncing(true);
     localStorage.setItem('uba_active_hub_id', hubId);
     localStorage.setItem('uba_active_role', user.role);
     localStorage.setItem('uba_user_context', JSON.stringify(user));
     
-    const cloudData = await syncCloudShards(hubId);
+    await syncCloudShards(hubId);
     
     setCurrentHubId(hubId);
     setActiveRole(user.role);
@@ -238,14 +208,7 @@ const App: React.FC = () => {
     
     if (user.role === 'facilitator') {
       setActiveFacilitator({ name: user.name, subject: user.subject || "GENERAL", email: user.email });
-    } else if (user.role === 'pupil' && cloudData) {
-      const s = calculateClassStatistics(cloudData.students, cloudData.settings);
-      const processed = processStudentData(s, cloudData.students, {}, cloudData.settings);
-      const pupil = processed.find(p => p.id === parseInt(user.nodeId));
-      if (pupil) setActivePupil(pupil);
     }
-    
-    setIsSyncing(false);
   };
 
   if (isInitializing || isSyncing) return (
@@ -259,49 +222,21 @@ const App: React.FC = () => {
         <p className="text-2xl font-black text-white uppercase tracking-[0.6em] leading-none animate-pulse">
           {isSyncing ? "Establishing Deep Mirror" : "Validating Node Shards"}
         </p>
-        <div className="max-w-md mx-auto space-y-2">
-          <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest leading-none">
-            {isSyncing ? "100% Learner Data Download Protocol..." : "Handshaking Unified Network Registry v9.5..."}
-          </p>
-          <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-             <div className="h-full bg-blue-500 animate-[progress_3s_ease-in-out_infinite]" style={{width:'70%'}}></div>
-          </div>
-        </div>
       </div>
-      <style dangerouslySetInnerHTML={{ __html: `@keyframes progress { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }` }} />
     </div>
   );
 
   if (!currentHubId && !isSuperAdmin) return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
       {isRegistering ? (
-        <SchoolRegistrationPortal settings={settings} onBulkUpdate={(u)=>setSettings(p=>({...p,...u}))} onSave={handleSaveAll} onComplete={(hubId)=>{ localStorage.setItem('uba_active_hub_id', hubId); localStorage.setItem('uba_active_role', 'school_admin'); setCurrentHubId(hubId); setActiveRole('school_admin'); }} onResetStudents={()=>setStudents([])} onSwitchToLogin={()=>setIsRegistering(false)} />
+        <SchoolRegistrationPortal settings={settings} onBulkUpdate={(u)=>setSettings(p=>({...p,...u}))} onSave={handleSaveAll} onComplete={(hubId)=>{ handleLoginTransition(hubId, {role:'school_admin'}); }} onResetStudents={()=>setStudents([])} onSwitchToLogin={()=>setIsRegistering(false)} />
       ) : (
-        <LoginPortal onLoginSuccess={handleLoginTransition} onSuperAdminLogin={()=>{ localStorage.setItem('uba_active_role', 'super_admin'); localStorage.setItem('uba_user_context', JSON.stringify({name:'HQ CONTROLLER', role:'super_admin', nodeId:'MASTER-01', email:'hq@unitedbaylor.edu'})); setIsSuperAdmin(true); setActiveRole('super_admin'); }} onSwitchToRegister={()=>setIsRegistering(true)} />
+        <LoginPortal onLoginSuccess={handleLoginTransition} onSuperAdminLogin={()=>{ setIsSuperAdmin(true); }} onSwitchToRegister={()=>setIsRegistering(true)} />
       )}
     </div>
   );
 
   if (isSuperAdmin) return <SuperAdminPortal onExit={handleLogout} onRemoteView={async (id)=>{ await syncCloudShards(id); setCurrentHubId(id); setIsSuperAdmin(false); setActiveRole('school_admin'); }} />;
-
-  if (activeRole === 'pupil' && activePupil) {
-    return (
-      <PupilDashboard 
-        student={activePupil} 
-        stats={stats} 
-        settings={settings} 
-        classAverageAggregate={classAvgAggregate} 
-        totalEnrolled={processedStudents.length} 
-        onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} 
-        globalRegistry={globalRegistry} 
-        onLogout={handleLogout} 
-        loggedInUser={loggedInUser} 
-      />
-    );
-  }
-
-  const isFacilitatorMode = activeRole === 'facilitator';
-  const previewStudent = processedStudents.length > 0 ? processedStudents[0] : activePupil;
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col font-sans">
@@ -318,35 +253,20 @@ const App: React.FC = () => {
       </div>
       <div className="flex-1 overflow-auto p-4 md:p-8">
         {viewMode==='home' && <HomeDashboard students={processedStudents} settings={settings} setViewMode={setViewMode as any} />}
-        {viewMode==='master' && <MasterSheet students={processedStudents} stats={stats} settings={settings} onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} facilitators={facilitators} isFacilitator={isFacilitatorMode} />}
-        {viewMode==='series' && <SeriesBroadSheet students={students} settings={settings} onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} currentProcessed={processedStudents.map(ps=>({id:ps.id, bestSixAggregate:ps.bestSixAggregate, rank:ps.rank, totalScore:ps.totalScore, category:ps.category}))} />}
+        {viewMode==='master' && <MasterSheet students={processedStudents} stats={stats} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); handleSaveAll({settings:next}); }} facilitators={facilitators} isFacilitator={activeRole === 'facilitator'} />}
+        {viewMode==='series' && <SeriesBroadSheet students={students} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); handleSaveAll({settings:next}); }} currentProcessed={processedStudents.map(ps=>({id:ps.id, bestSixAggregate:ps.bestSixAggregate, rank:ps.rank, totalScore:ps.totalScore, category:ps.category}))} />}
         {viewMode==='pupil_hub' && (
-           previewStudent ? (
-             <PupilDashboard 
-               student={previewStudent} 
-               stats={stats} 
-               settings={settings} 
-               classAverageAggregate={classAvgAggregate} 
-               totalEnrolled={processedStudents.length} 
-               onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} 
-               globalRegistry={globalRegistry} 
-               onLogout={handleLogout} 
-               loggedInUser={loggedInUser} 
-             />
-           ) : (
-             <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4 opacity-50">
-               <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-blue-900"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-               <p className="font-black uppercase text-xs tracking-[0.5em] text-blue-900 leading-none">No Candidate Data to Display</p>
-             </div>
-           )
+           processedStudents.length > 0 ? (
+             <PupilDashboard student={processedStudents[0]} stats={stats} settings={settings} classAverageAggregate={classAvgAggregate} totalEnrolled={processedStudents.length} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); handleSaveAll({settings:next}); }} globalRegistry={globalRegistry} onLogout={handleLogout} loggedInUser={loggedInUser} />
+           ) : <div className="text-center p-20 opacity-30 font-black uppercase text-xs">No Candidate Shards Detected</div>
         )}
         {viewMode==='reports' && (
           <div className="space-y-8">
             <input type="text" placeholder="Search..." value={reportSearchTerm} onChange={(e)=>setReportSearchTerm(e.target.value)} className="w-full p-6 rounded-3xl border-2 border-gray-100 shadow-sm font-bold no-print outline-none" />
-            {processedStudents.filter(s=>(s.name||"").toLowerCase().includes(reportSearchTerm.toLowerCase())).map(s=><ReportCard key={s.id} student={s} stats={stats} settings={settings} onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} classAverageAggregate={classAvgAggregate} totalEnrolled={processedStudents.length} isFacilitator={isFacilitatorMode} />)}
+            {processedStudents.filter(s=>(s.name||"").toLowerCase().includes(reportSearchTerm.toLowerCase())).map(s=><ReportCard key={s.id} student={s} stats={stats} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); handleSaveAll({settings:next}); }} classAverageAggregate={classAvgAggregate} totalEnrolled={processedStudents.length} isFacilitator={activeRole === 'facilitator'} />)}
           </div>
         )}
-        {viewMode==='management' && <ManagementDesk students={students} setStudents={setStudents} facilitators={facilitators} setFacilitators={setFacilitators} subjects={SUBJECT_LIST} settings={settings} onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} onBulkUpdate={(u)=>setSettings(p=>({...p,...u}))} onSave={handleSaveAll} processedSnapshot={processedStudents} onLoadDummyData={()=>{}} onClearData={()=>{}} isFacilitator={isFacilitatorMode} activeFacilitator={activeFacilitator} loggedInUser={loggedInUser} />}
+        {viewMode==='management' && <ManagementDesk students={students} setStudents={setStudents} facilitators={facilitators} setFacilitators={setFacilitators} subjects={SUBJECT_LIST} settings={settings} onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} onBulkUpdate={(u)=>{ const next={...settings,...u}; setSettings(next); handleSaveAll({settings:next}); }} onSave={handleSaveAll} processedSnapshot={processedStudents} onLoadDummyData={()=>{}} onClearData={()=>{}} isFacilitator={activeRole === 'facilitator'} activeFacilitator={activeFacilitator} loggedInUser={loggedInUser} />}
       </div>
     </div>
   );
