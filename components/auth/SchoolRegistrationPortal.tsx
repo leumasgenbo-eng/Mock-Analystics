@@ -39,14 +39,14 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
       const accessKey = 'OPEN-HUB'; // Default access key for new registrations
       const ts = new Date().toISOString();
 
-      // 1. REGISTER IDENTITY (Primary Admin)
+      // 1. REGISTER IDENTITY (Primary Admin) - This makes the school findable at the login gate
       await supabase.from('uba_identities').upsert({
         email: targetEmail,
         full_name: targetName,
         node_id: hubId,
         hub_id: hubId,
         role: 'school_admin',
-        unique_code: accessKey // Critical: Store the key for later identity recall
+        unique_code: accessKey 
       });
 
       const newSettings: GlobalSettings = {
@@ -62,14 +62,14 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
         reportDate: new Date().toLocaleDateString()
       };
 
-      // 2. INITIALIZE INSTITUTIONAL SHARDS
+      // 2. INITIALIZE INSTITUTIONAL SHARDS IN PERSISTENCE HUB
       await supabase.from('uba_persistence').insert([
         { id: `${hubId}_settings`, hub_id: hubId, payload: newSettings },
         { id: `${hubId}_students`, hub_id: hubId, payload: [] },
         { id: `${hubId}_facilitators`, hub_id: hubId, payload: {} }
       ]);
 
-      // 3. UPDATE REGISTRY VIEW
+      // 3. UPDATE REGISTRY VIEW FOR HQ
       await supabase.from('uba_persistence').upsert({ 
         id: `registry_${hubId}`, 
         hub_id: hubId, 
@@ -87,6 +87,10 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
       if (onResetStudents) onResetStudents();
       setFinalHubId(hubId);
       setStep('SUCCESS');
+      
+      // Auto-save local state
+      onSave();
+
     } catch (err: any) {
       alert("Registration Fault: " + err.message);
     } finally {
@@ -102,12 +106,12 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
             <div className="space-y-2">
-               <h3 className="text-3xl font-black text-white uppercase tracking-tight">Onboarding Complete</h3>
-               <p className="text-emerald-400 font-bold text-xs uppercase tracking-widest">Institution Shard Synchronized</p>
+               <h3 className="text-3xl font-black text-white uppercase tracking-tight">Institutional Enrollment Complete</h3>
+               <p className="text-emerald-400 font-bold text-xs uppercase tracking-widest">Network Shard Synchronized</p>
             </div>
             <div className="bg-white/5 p-8 rounded-3xl border border-white/10 space-y-4 text-left">
                <div>
-                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">System Node ID</span>
+                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">System Node ID (Required for Login)</span>
                   <p className="text-2xl font-mono font-black text-blue-400 tracking-tighter">{finalHubId}</p>
                </div>
                <div className="pt-4 border-t border-white/5">
@@ -115,11 +119,14 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
                   <p className="text-2xl font-mono font-black text-emerald-400 tracking-tighter">OPEN-HUB</p>
                </div>
             </div>
+            <div className="text-left px-4">
+              <p className="text-[10px] text-slate-400 italic">Notice: Use your Full Name and the System Node ID above at the Login Gate. You can change your particulars inside the Management Hub.</p>
+            </div>
             <button 
               onClick={() => onComplete?.(finalHubId)}
               className="w-full bg-white text-slate-950 py-6 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all"
             >
-              Enter Dashboard
+              Access Dashboard
             </button>
          </div>
       </div>
@@ -138,7 +145,7 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
           <form onSubmit={handleRegister} className="grid grid-cols-1 gap-6">
             <div className="space-y-2">
               <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-2">Academy Name</label>
-              <input type="text" value={formData.schoolName} onChange={e=>setFormData({...formData, schoolName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black uppercase outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" placeholder="E.G. UNITED BAYLOR ACADEMY" required />
+              <input type="text" value={formData.schoolName} onChange={e=>setFormData({...formData, schoolName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black uppercase outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" placeholder="ENTER SCHOOL NAME..." required />
             </div>
             <div className="space-y-2">
               <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-2">Registrant Full Name</label>
@@ -161,7 +168,7 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
             <button type="submit" disabled={isLoading} className="w-full bg-blue-900 text-white py-6 rounded-3xl font-black text-xs uppercase tracking-[0.3em] disabled:opacity-50 transition-all hover:bg-black mt-4 shadow-2xl">
               {isLoading ? "Syncing Shards..." : "Execute Enrollment"}
             </button>
-            <button type="button" onClick={onSwitchToLogin} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline mt-4 text-center w-full">Access Existing Hub</button>
+            <button type="button" onClick={onSwitchToLogin} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline mt-4 text-center w-full">Already Registered? Recall Identity</button>
           </form>
         </div>
       </div>

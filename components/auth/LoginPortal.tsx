@@ -38,7 +38,6 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
 
     try {
       // MASTER HANDSHAKE: Query identity registry for either Master Access Key (unique_code) OR Node ID
-      // This ensures that even if credentials exist in different columns, the recall is successful.
       const { data: identity, error: idError } = await supabase
         .from('uba_identities')
         .select('*')
@@ -94,8 +93,8 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
     return (
       <div className="w-full max-w-5xl p-4 animate-in fade-in duration-500">
         <div className="text-center mb-16">
-           <h2 className="text-5xl font-black text-white uppercase tracking-tighter leading-none">UNITED BAYLOR ACADEMY</h2>
-           <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em] mt-3 leading-none">Unified Assessment Network — Secure Identity Recall</p>
+           <h2 className="text-5xl font-black text-white uppercase tracking-tighter leading-none">SS-MAP</h2>
+           <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em] mt-3 leading-none">Unified Assessment Network — Secure Identity Recall</p>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -117,21 +116,8 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
         <div className="mt-16 text-center space-y-6">
           <button onClick={onSwitchToRegister} className="text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-white transition-colors">Onboard New Institution</button>
           
-          <div className="pt-8 border-t border-white/5 opacity-40 hover:opacity-100 transition-opacity">
-            <p className="text-[7px] text-slate-600 uppercase tracking-[0.4em] mb-4 leading-none">Global Network Administration Registry</p>
-            <div className="bg-slate-900/50 backdrop-blur-md p-6 rounded-3xl border border-white/5 inline-block text-left shadow-inner">
-               <div className="flex items-center gap-8">
-                  <div>
-                     <p className="text-[8px] font-black text-blue-500 uppercase tracking-widest">Master Identity</p>
-                     <p className="text-xs font-black text-white mt-1">HQ CONTROLLER</p>
-                  </div>
-                  <div className="w-px h-8 bg-white/10"></div>
-                  <div>
-                     <p className="text-[8px] font-black text-blue-500 uppercase tracking-widest">Master Access Key</p>
-                     <p className="text-xs font-black text-white mt-1 font-mono">UBA-HQ-MASTER-2025</p>
-                  </div>
-               </div>
-            </div>
+          <div className="pt-8 border-t border-white/5 opacity-40">
+            <p className="text-[7px] text-slate-600 uppercase tracking-[0.4em] mb-4 leading-none text-center">Global Network Administration Registry — Authorized Access Only</p>
           </div>
         </div>
       </div>
