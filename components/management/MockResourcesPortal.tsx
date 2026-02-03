@@ -62,9 +62,9 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({ settings, onS
   };
 
   const handleProcessPaste = () => {
+    if (!pasteData.trim()) return;
     const lines = pasteData.split('\n').filter(l => l.trim() !== '');
     const newIndicators: QuestionIndicatorMapping[] = lines.map(line => {
-      // Split by tab (Excel/Sheets default) or comma
       const cols = line.includes('\t') ? line.split('\t') : line.split(',');
       return {
         id: Math.random().toString(36).substr(2, 9),
@@ -113,7 +113,7 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({ settings, onS
       
       {/* Active Context Switcher */}
       <header className="bg-slate-950 text-white p-12 rounded-[4rem] shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
+        <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/10 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
         <div className="relative flex flex-col xl:flex-row justify-between items-center gap-10">
            <div className="space-y-2 text-center xl:text-left">
               <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em]">Institutional Resource Hub</h3>
@@ -216,37 +216,68 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({ settings, onS
          <button onClick={() => alert("Matrix Handshake Complete.")} className="bg-slate-900 hover:bg-black text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase shadow-2xl transition-all active:scale-95 tracking-widest">Sync Resource Node</button>
       </footer>
 
-      {/* PASTE MODAL */}
+      {/* RE-SIZED PASTE MODAL */}
       {showPasteModal && (
-        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[200] flex items-center justify-center p-6 animate-in fade-in duration-300">
-           <div className="bg-white w-full max-w-4xl rounded-[4rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-              <div className="bg-slate-900 p-10 flex justify-between items-center text-white">
+        <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-xl z-[200] flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-300">
+           <div className="bg-white w-full max-w-3xl rounded-[3rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+              {/* Modal Header */}
+              <div className="bg-slate-900 p-8 flex justify-between items-center text-white shrink-0">
                  <div className="space-y-1">
-                    <h4 className="text-2xl font-black uppercase tracking-tight">Bulk Paste Hub</h4>
-                    <p className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.4em]">TSV / CSV High-Speed Ingestion</p>
+                    <h4 className="text-xl font-black uppercase tracking-tight">Bulk Paste Hub Matrix</h4>
+                    <p className="text-[9px] font-bold text-blue-400 uppercase tracking-[0.4em]">Integrated Shard Population Node</p>
                  </div>
                  <button onClick={() => setShowPasteModal(false)} className="text-slate-500 hover:text-white transition-colors">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                  </button>
               </div>
-              <div className="p-10 space-y-6 flex-1 flex flex-col">
-                 <div className="bg-blue-50 p-6 rounded-3xl border border-blue-100 flex items-start gap-4">
-                    <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center shrink-0 font-black text-xs">!</div>
-                    <p className="text-[10px] text-blue-900 font-bold leading-relaxed uppercase">
-                       ORDER: Sec [TAB] Q# [TAB] Strand [TAB] Sub-Strand [TAB] Code [TAB] Topic [TAB] Weight. <br/>
-                       Pasting multiple rows will batch-append them to the current subject ledger.
-                    </p>
+
+              {/* Modal Content */}
+              <div className="p-8 space-y-8 flex-1 flex flex-col overflow-y-auto no-scrollbar">
+                 {/* Sub-Title 1: Instructions */}
+                 <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                       <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                       <h5 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Parsing Protocol & Schema</h5>
+                    </div>
+                    <div className="bg-blue-50 p-6 rounded-3xl border border-blue-100 flex items-start gap-4">
+                       <div className="w-8 h-8 bg-blue-600 text-white rounded-xl flex items-center justify-center shrink-0 font-black text-[10px]">INFO</div>
+                       <p className="text-[9px] text-blue-900 font-bold leading-relaxed uppercase">
+                          REQUIRED COLUMN ORDER: <br/>
+                          <span className="text-blue-600 font-black">Sec [TAB] Q# [TAB] Strand [TAB] Sub-Strand [TAB] Code [TAB] Topic [TAB] Weight</span>
+                       </p>
+                    </div>
                  </div>
-                 <textarea 
-                    value={pasteData}
-                    onChange={(e) => setPasteData(e.target.value)}
-                    placeholder="PASTE MATRIX DATA HERE..."
-                    className="flex-1 bg-slate-50 border-2 border-gray-100 rounded-[2.5rem] p-10 font-mono text-xs font-bold outline-none focus:border-blue-500 focus:bg-white transition-all uppercase placeholder:opacity-20"
-                 />
+
+                 {/* Sub-Title 2: Input Area */}
+                 <div className="space-y-3 flex-1 flex flex-col">
+                    <div className="flex items-center gap-2">
+                       <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>
+                       <h5 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Matrix Input Node</h5>
+                    </div>
+                    <textarea 
+                       value={pasteData}
+                       onChange={(e) => setPasteData(e.target.value)}
+                       placeholder="PASTE DATA FROM SPREADSHEET HERE..."
+                       className="flex-1 bg-slate-50 border-2 border-gray-100 rounded-[2rem] p-8 font-mono text-[10px] font-bold outline-none focus:border-blue-500 focus:bg-white transition-all uppercase placeholder:opacity-20 resize-none min-h-[250px]"
+                    />
+                 </div>
+              </div>
+
+              {/* Modal Footer: Action Buttons */}
+              <div className="bg-gray-50 p-8 border-t border-gray-100 flex items-center justify-between gap-4 shrink-0">
+                 <button 
+                    onClick={() => setShowPasteModal(false)}
+                    className="px-8 py-4 bg-white border border-gray-200 text-slate-400 rounded-2xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-50 transition-all active:scale-95"
+                 >
+                    Exit Terminal
+                 </button>
                  <button 
                     onClick={handleProcessPaste}
-                    className="w-full bg-blue-600 text-white py-6 rounded-[2rem] font-black text-xs uppercase tracking-[0.5em] shadow-2xl active:scale-95 transition-all"
-                 >Ingest Shards to Registry</button>
+                    disabled={!pasteData.trim()}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-[9px] uppercase tracking-[0.4em] shadow-xl active:scale-95 transition-all disabled:opacity-40"
+                 >
+                    Save Matrix to Registry
+                 </button>
               </div>
            </div>
         </div>
