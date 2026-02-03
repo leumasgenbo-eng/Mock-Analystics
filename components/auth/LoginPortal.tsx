@@ -37,12 +37,13 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
     }
 
     try {
-      // MASTER HANDSHAKE: Query identity registry for the Master Access Key (unique_code)
+      // MASTER HANDSHAKE: Query identity registry for either Master Access Key (unique_code) OR Node ID
+      // This ensures that even if credentials exist in different columns, the recall is successful.
       const { data: identity, error: idError } = await supabase
         .from('uba_identities')
         .select('*')
         .eq('full_name', inputName)
-        .eq('unique_code', inputKey)
+        .or(`unique_code.eq.${inputKey},node_id.eq.${inputKey}`)
         .maybeSingle();
 
       if (idError) throw new Error("Recall Shard unreachable: " + idError.message);

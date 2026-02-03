@@ -36,15 +36,17 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
       const hubId = `SMA-2025-${Math.floor(1000 + Math.random() * 9000)}`;
       const targetEmail = formData.email.toLowerCase().trim();
       const targetName = formData.registrant.toUpperCase().trim();
+      const accessKey = 'OPEN-HUB'; // Default access key for new registrations
       const ts = new Date().toISOString();
 
-      // 1. REGISTER IDENTITY (ANONYMOUS)
+      // 1. REGISTER IDENTITY (Primary Admin)
       await supabase.from('uba_identities').upsert({
         email: targetEmail,
         full_name: targetName,
         node_id: hubId,
         hub_id: hubId,
-        role: 'school_admin'
+        role: 'school_admin',
+        unique_code: accessKey // Critical: Store the key for later identity recall
       });
 
       const newSettings: GlobalSettings = {
@@ -56,17 +58,30 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
         schoolContact: formData.contact,
         schoolEmail: targetEmail,
         schoolNumber: hubId,
-        accessCode: 'OPEN-HUB',
+        accessCode: accessKey,
         reportDate: new Date().toLocaleDateString()
       };
 
-      // 2. INITIALIZE SHARDS
+      // 2. INITIALIZE INSTITUTIONAL SHARDS
       await supabase.from('uba_persistence').insert([
         { id: `${hubId}_settings`, hub_id: hubId, payload: newSettings },
         { id: `${hubId}_students`, hub_id: hubId, payload: [] },
-        { id: `${hubId}_facilitators`, hub_id: hubId, payload: {} },
-        { id: `registry_${hubId}`, hub_id: hubId, payload: [{ ...newSettings, status: 'active', lastActivity: ts, studentCount: 0 }] }
+        { id: `${hubId}_facilitators`, hub_id: hubId, payload: {} }
       ]);
+
+      // 3. UPDATE REGISTRY VIEW
+      await supabase.from('uba_persistence').upsert({ 
+        id: `registry_${hubId}`, 
+        hub_id: hubId, 
+        payload: { 
+          ...newSettings, 
+          id: hubId,
+          name: formData.schoolName.toUpperCase(),
+          status: 'active', 
+          lastActivity: ts, 
+          studentCount: 0 
+        } 
+      });
 
       onBulkUpdate(newSettings);
       if (onResetStudents) onResetStudents();
@@ -90,9 +105,15 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
                <h3 className="text-3xl font-black text-white uppercase tracking-tight">Onboarding Complete</h3>
                <p className="text-emerald-400 font-bold text-xs uppercase tracking-widest">Institution Shard Synchronized</p>
             </div>
-            <div className="bg-white/5 p-8 rounded-3xl border border-white/10 space-y-4">
-               <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">System Node ID (Required for Recall)</span>
-               <p className="text-3xl font-mono font-black text-blue-400 tracking-tighter">{finalHubId}</p>
+            <div className="bg-white/5 p-8 rounded-3xl border border-white/10 space-y-4 text-left">
+               <div>
+                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">System Node ID</span>
+                  <p className="text-2xl font-mono font-black text-blue-400 tracking-tighter">{finalHubId}</p>
+               </div>
+               <div className="pt-4 border-t border-white/5">
+                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">Master Access Key</span>
+                  <p className="text-2xl font-mono font-black text-emerald-400 tracking-tighter">OPEN-HUB</p>
+               </div>
             </div>
             <button 
               onClick={() => onComplete?.(finalHubId)}
@@ -115,15 +136,32 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
           </div>
 
           <form onSubmit={handleRegister} className="grid grid-cols-1 gap-6">
-            <input type="text" value={formData.schoolName} onChange={e=>setFormData({...formData, schoolName: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black uppercase outline-none" placeholder="ACADEMY NAME..." required />
-            <input type="text" value={formData.registrant} onChange={e=>setFormData({...formData, registrant: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black uppercase outline-none" placeholder="FULL LEGAL NAME..." required />
-            <input type="text" value={formData.contact} onChange={e=>setFormData({...formData, contact: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none" placeholder="CONTACT PHONE..." required />
-            <input type="text" value={formData.location} onChange={e=>setFormData({...formData, location: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none" placeholder="LOCATION..." required />
-            <input type="email" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none" placeholder="OFFICIAL EMAIL..." required />
-            <button type="submit" disabled={isLoading} className="w-full bg-blue-900 text-white py-6 rounded-3xl font-black text-xs uppercase tracking-[0.3em] disabled:opacity-50 transition-all hover:bg-black">
+            <div className="space-y-2">
+              <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-2">Academy Name</label>
+              <input type="text" value={formData.schoolName} onChange={e=>setFormData({...formData, schoolName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black uppercase outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" placeholder="E.G. UNITED BAYLOR ACADEMY" required />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-2">Registrant Full Name</label>
+              <input type="text" value={formData.registrant} onChange={e=>setFormData({...formData, registrant: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black uppercase outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" placeholder="FULL LEGAL IDENTITY..." required />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-2">Contact Phone</label>
+                <input type="text" value={formData.contact} onChange={e=>setFormData({...formData, contact: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none" placeholder="000 000 0000" required />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-2">Location</label>
+                <input type="text" value={formData.location} onChange={e=>setFormData({...formData, location: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none uppercase" placeholder="TOWN / CITY" required />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-2">Official Email</label>
+              <input type="email" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none" placeholder="INFO@ACADEMY.COM" required />
+            </div>
+            <button type="submit" disabled={isLoading} className="w-full bg-blue-900 text-white py-6 rounded-3xl font-black text-xs uppercase tracking-[0.3em] disabled:opacity-50 transition-all hover:bg-black mt-4 shadow-2xl">
               {isLoading ? "Syncing Shards..." : "Execute Enrollment"}
             </button>
-            <button type="button" onClick={onSwitchToLogin} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline mt-2">Access Existing Hub</button>
+            <button type="button" onClick={onSwitchToLogin} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline mt-4 text-center w-full">Access Existing Hub</button>
           </form>
         </div>
       </div>
