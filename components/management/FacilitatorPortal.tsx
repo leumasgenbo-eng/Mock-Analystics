@@ -1,5 +1,5 @@
 
-// Fix: Added useMemo to the React imports to resolve "Cannot find name 'useMemo'" error on line 180
+// Fix: Added useMemo to the React imports to resolve "Cannot find name 'useMemo'" error
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { StaffAssignment, StaffRole, GlobalSettings, InvigilationSlot } from '../../types';
 import { supabase } from '../../supabaseClient';
@@ -39,6 +39,29 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
   const createEmptyRegister = (): InvigilationSlot[] => 
     Array.from({ length: 9 }, () => ({ dutyDate: '', timeSlot: '', subject: '' }));
 
+  const handleUpdateInvigilation = async (email: string, index: number, field: keyof InvigilationSlot, value: string) => {
+    const nextFacs = { ...facilitators };
+    const staff = { ...nextFacs[email] };
+    const invs = [...staff.invigilations];
+    
+    // Ensure array has 9 slots
+    while(invs.length < 9) invs.push({ dutyDate: '', timeSlot: '', subject: '' });
+    
+    invs[index] = { ...invs[index], [field]: value };
+    staff.invigilations = invs;
+    nextFacs[email] = staff;
+    
+    setFacilitators(nextFacs);
+
+    // Persist to DB
+    try {
+      await supabase.from('uba_facilitators').update({ invigilation_data: invs }).eq('email', email);
+      onSave({ facilitators: nextFacs });
+    } catch (e) {
+      console.error("Invigilation Sync Failed", e);
+    }
+  };
+
   const handleAddOrUpdateStaff = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newStaff.name || !newStaff.email) return;
@@ -59,6 +82,8 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
           const staffIdSequence = `STAFF-${Math.floor(1000 + Math.random() * 9000)}`;
           nodeId = `${hubId}/${staffIdSequence}`;
       }
+
+      const invRegister = editingEmail ? facilitators[editingEmail].invigilations : createEmptyRegister();
 
       // 1. IDENTITY HUB SYNC
       const { error: idError } = await supabase.from('uba_identities').upsert({
@@ -82,14 +107,15 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         teaching_category: newStaff.category,
         unique_code: uniqueCode,
         merit_balance: editingEmail ? (dbFacilitators.find(d => d.email === editingEmail)?.merit_balance || 0) : 0,
-        monetary_balance: editingEmail ? (dbFacilitators.find(d => d.email === editingEmail)?.monetary_balance || 0) : 0
+        monetary_balance: editingEmail ? (dbFacilitators.find(d => d.email === editingEmail)?.monetary_balance || 0) : 0,
+        invigilation_data: invRegister
       });
 
       if (facError) throw facError;
 
       const staff: StaffAssignment = {
         ... (editingEmail ? facilitators[editingEmail] : {
-          invigilations: createEmptyRegister(),
+          invigilations: invRegister,
           account: { meritTokens: 0, monetaryCredits: 0, totalSubmissions: 0, unlockedQuestionIds: [] },
           marking: { dateTaken: '', dateReturned: '', inProgress: false }
         }),
@@ -220,7 +246,6 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                <span className="text-[9px] font-black text-indigo-400 uppercase tracking-[0.4em]">Aggregated Faculty Timetable</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-               {/* Fix: Explicitly cast Object.entries result to resolve "Property 'map' does not exist on type 'unknown'" error on line 226 */}
                {(Object.entries(masterSchedule) as [string, { subject: string, staff: string[] }[]][]).map(([time, subjects]) => (
                   <div key={time} className="bg-indigo-50/30 border border-indigo-100 p-6 rounded-[2rem] space-y-4">
                      <span className="text-[10px] font-mono font-black text-indigo-600 uppercase block border-b border-indigo-100 pb-2">{time}</span>
@@ -285,9 +310,10 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       </section>
 
       <div className="grid grid-cols-1 gap-8">
-        {(Object.values(facilitators) as StaffAssignment[]).map((f) => {
+        {(Object.values(facilitators) as StaffAssignment[]).map((f, fIdx) => {
           const isExpanded = expandedStaff === f.email;
           const dbData = dbFacilitators.find(d => d.email === f.email);
+          const dutiesDone = f.invigilations.filter(i => i.dutyDate && i.subject).length;
           
           return (
             <div key={f.email} className="bg-white rounded-[3rem] border border-gray-100 shadow-xl overflow-hidden group hover:shadow-2xl transition-all">
@@ -295,16 +321,18 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                   <div className="flex items-center gap-6 flex-1">
                      <div className="w-16 h-16 bg-blue-900 text-white rounded-3xl flex items-center justify-center font-black shadow-lg border-4 border-white relative">
                         <span className="text-2xl">{f.name.charAt(0)}</span>
+                        <div className="absolute -top-2 -right-2 bg-indigo-600 text-white text-[8px] px-2 py-0.5 rounded-full border-2 border-white shadow-md">#{fIdx + 1}</div>
                      </div>
                      <div className="space-y-1.5">
                         <div className="flex items-center gap-3">
-                           <h4 className="text-lg font-black text-slate-900 uppercase leading-none">{f.name}</h4>
+                           <h4 className="text-lg font-black text-slate-900 uppercase leading-none">{f.taughtSubject || 'GENERAL'}</h4>
                            <span className={`px-3 py-0.5 rounded-lg text-[8px] font-black uppercase bg-emerald-50 text-emerald-600`}>{f.teachingCategory || 'BASIC 9'}</span>
+                           <span className="text-[10px] font-black text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded border border-blue-100">{dutiesDone}/9 DUTIES</span>
                         </div>
                         <div className="flex flex-wrap items-center gap-4 text-[9px] font-bold text-gray-400 uppercase tracking-widest">
-                           <span className="text-blue-600">{f.taughtSubject || 'GENERAL'}</span>
+                           <span className="text-slate-950 font-black">Legal Identity: {f.name}</span>
                            <span className="w-1 h-1 bg-gray-200 rounded-full"></span>
-                           <span className="font-mono text-[8px] text-indigo-600">ID: {f.enrolledId?.split('/')[1] || '---'}</span>
+                           <span className="font-mono text-[8px] text-indigo-600">Enrolled ID: {f.enrolledId || '---'}</span>
                         </div>
                      </div>
                   </div>
@@ -320,30 +348,75 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
 
                {isExpanded && (
                   <div className="bg-slate-50 p-8 border-t border-gray-100 animate-in slide-in-from-top-4 duration-500">
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        <div className="bg-white p-6 rounded-3xl border border-gray-100 space-y-4 shadow-sm">
-                           <h5 className="text-[10px] font-black text-blue-900 uppercase tracking-widest">Instructional Ledger</h5>
-                           <div className="grid grid-cols-2 gap-4">
-                              <div className="text-center bg-slate-50 p-3 rounded-2xl">
-                                 <span className="text-[7px] font-black text-gray-400 uppercase block mb-1">Merit</span>
-                                 <p className="text-lg font-black text-blue-900">{dbData?.merit_balance || 0}</p>
-                              </div>
-                              <div className="text-center bg-slate-50 p-3 rounded-2xl">
-                                 <span className="text-[7px] font-black text-gray-400 uppercase block mb-1">GHS Vault</span>
-                                 <p className="text-lg font-black text-emerald-600">{dbData?.monetary_balance?.toFixed(2) || '0.00'}</p>
+                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        {/* Facilitator Meta Shard */}
+                        <div className="lg:col-span-4 space-y-6">
+                           <div className="bg-white p-6 rounded-3xl border border-gray-100 space-y-4 shadow-sm">
+                              <h5 className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b border-gray-50 pb-2">Institutional Particulars</h5>
+                              <div className="space-y-3">
+                                 <div>
+                                    <span className="text-[7px] font-black text-slate-400 uppercase">Hub Role</span>
+                                    <p className="text-xs font-black text-slate-900">{f.role || 'FACILITATOR'}</p>
+                                 </div>
+                                 <div>
+                                    <span className="text-[7px] font-black text-slate-400 uppercase">Access PIN</span>
+                                    <p className="text-xs font-mono font-black text-indigo-600">{f.uniqueCode || '---'}</p>
+                                 </div>
+                                 <div className="pt-4 grid grid-cols-2 gap-4 border-t border-gray-50">
+                                    <div className="text-center bg-slate-50 p-3 rounded-2xl">
+                                       <span className="text-[7px] font-black text-gray-400 uppercase block mb-1">Merit</span>
+                                       <p className="text-lg font-black text-blue-900">{dbData?.merit_balance || 0}</p>
+                                    </div>
+                                    <div className="text-center bg-slate-50 p-3 rounded-2xl">
+                                       <span className="text-[7px] font-black text-gray-400 uppercase block mb-1">Vault Balance</span>
+                                       <p className="text-sm font-black text-emerald-600 font-mono">GHS {dbData?.monetary_balance?.toFixed(2) || '0.00'}</p>
+                                    </div>
+                                 </div>
                               </div>
                            </div>
                         </div>
 
-                        <div className="md:col-span-2 bg-white p-6 rounded-3xl border border-gray-100 space-y-4 shadow-sm">
-                           <h5 className="text-[10px] font-black text-indigo-900 uppercase tracking-widest">Invigilation Shards</h5>
-                           <div className="grid grid-cols-3 gap-3">
-                              {f.invigilations.slice(0, 3).map((inv, idx) => (
-                                 <div key={idx} className="bg-slate-50 p-3 rounded-2xl space-y-1">
-                                    <p className="text-[10px] font-black uppercase text-slate-700 truncate">{inv.subject || 'Vacant'}</p>
-                                    <p className="text-[8px] font-bold text-indigo-400">{inv.dutyDate || 'TBA'}</p>
-                                 </div>
-                              ))}
+                        {/* Invigilation Register (1-9) */}
+                        <div className="lg:col-span-8 bg-white p-8 rounded-[3rem] border border-gray-100 space-y-6 shadow-sm">
+                           <div className="flex justify-between items-center border-b border-gray-50 pb-4">
+                              <h5 className="text-[11px] font-black text-indigo-900 uppercase tracking-widest">Invigilation Register (1-9)</h5>
+                              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Authorized Duty Ledger</span>
+                           </div>
+                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              {Array.from({ length: 9 }).map((_, idx) => {
+                                 const inv = f.invigilations[idx] || { dutyDate: '', timeSlot: '', subject: '' };
+                                 return (
+                                    <div key={idx} className="bg-slate-50 p-5 rounded-[2rem] border border-gray-100 space-y-3 group/slot hover:border-indigo-200 transition-all">
+                                       <div className="flex justify-between items-center">
+                                          <span className="w-6 h-6 rounded-lg bg-indigo-900 text-white flex items-center justify-center font-black text-[9px] shadow-md">{idx + 1}.</span>
+                                          <div className={`w-1.5 h-1.5 rounded-full ${inv.dutyDate && inv.subject ? 'bg-emerald-500 shadow-lg shadow-emerald-500/30' : 'bg-gray-200'}`}></div>
+                                       </div>
+                                       <div className="space-y-2">
+                                          <input 
+                                             type="date" 
+                                             value={inv.dutyDate || ''} 
+                                             onChange={(e) => handleUpdateInvigilation(f.email, idx, 'dutyDate', e.target.value)}
+                                             className="w-full bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-[9px] font-black uppercase text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                          />
+                                          <input 
+                                             type="text" 
+                                             placeholder="TIME"
+                                             value={inv.timeSlot || ''} 
+                                             onChange={(e) => handleUpdateInvigilation(f.email, idx, 'timeSlot', e.target.value.toUpperCase())}
+                                             className="w-full bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-[9px] font-black uppercase text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                          />
+                                          <select 
+                                             value={inv.subject || ''} 
+                                             onChange={(e) => handleUpdateInvigilation(f.email, idx, 'subject', e.target.value)}
+                                             className="w-full bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-[9px] font-black uppercase text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                          >
+                                             <option value="">SELECT SUBJECT...</option>
+                                             {subjects.map(s => <option key={s} value={s}>{s}</option>)}
+                                          </select>
+                                       </div>
+                                    </div>
+                                 );
+                              })}
                            </div>
                         </div>
                      </div>
