@@ -22,7 +22,6 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [expandedStaff, setExpandedStaff] = useState<string | null>(null);
-  const [showSchedule, setShowSchedule] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const createEmptyRegister = (): InvigilationSlot[] => 
@@ -58,29 +57,6 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
     });
   };
 
-  const handleDeleteStaff = async (email: string) => {
-    if (!window.confirm("CRITICAL: Decommission this specialist? This erases their global identity and access keys permanently.")) return;
-    
-    setIsEnrolling(true);
-    try {
-      // 1. Remove from Relational Tables
-      await supabase.from('uba_facilitators').delete().eq('email', email);
-      await supabase.from('uba_identities').delete().eq('email', email);
-
-      // 2. Update Local State
-      const nextFacs = { ...facilitators };
-      delete nextFacs[email];
-      setFacilitators(nextFacs);
-      onSave({ facilitators: nextFacs });
-      
-      alert("STAFF NODE PERMANENTLY ERASED.");
-    } catch (err: any) {
-      alert("Deletion Fault: " + err.message);
-    } finally {
-      setIsEnrolling(false);
-    }
-  };
-
   const handleGlobalFacultySync = async () => {
     const facArray = Object.values(facilitators);
     if (facArray.length === 0) return alert("No facilitators found to sync.");
@@ -97,6 +73,60 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
     }
   };
 
+  const handleDownloadTemplate = () => {
+    const header = "Full Name,Email Address,Subject Assigned\n";
+    const sample = "JOHN DOE,john.doe@unitedbaylor.edu.gh,Mathematics\n";
+    const blob = new Blob([header + sample], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "UBA_Staff_Template.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleGenerateSchedule = () => {
+    let content = `UNITED BAYLOR ACADEMY - OFFICIAL EXAM TIMETABLE\n`;
+    content += `SERIES: ${settings.activeMock} | SESSION: ${settings.academicYear}\n`;
+    content += `==============================================================\n\n`;
+    content += `DATE       | TIME SLOT       | SUBJECT                | STAFF LEAD\n`;
+    content += `-----------|-----------------|------------------------|------------\n`;
+    
+    subjects.forEach((sub, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() + i);
+      const dateStr = date.toISOString().split('T')[0];
+      const lead = Object.values(facilitators).find(f => f.taughtSubject === sub)?.name || 'TBA';
+      content += `${dateStr.padEnd(10)} | 09:00 - 11:30 | ${sub.padEnd(22)} | ${lead}\n`;
+    });
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Exam_Schedule_${settings.activeMock}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDeleteStaff = async (email: string) => {
+    if (!window.confirm("CRITICAL: Decommission this specialist? This erases their global identity and access keys permanently.")) return;
+    setIsEnrolling(true);
+    try {
+      await supabase.from('uba_facilitators').delete().eq('email', email);
+      await supabase.from('uba_identities').delete().eq('email', email);
+      const nextFacs = { ...facilitators };
+      delete nextFacs[email];
+      setFacilitators(nextFacs);
+      onSave({ facilitators: nextFacs });
+      alert("STAFF NODE PERMANENTLY ERASED.");
+    } catch (err: any) {
+      alert("Deletion Fault: " + err.message);
+    } finally {
+      setIsEnrolling(false);
+    }
+  };
+
   const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -105,7 +135,6 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       const content = event.target?.result as string;
       const lines = content.split(/\r?\n/).filter(l => l.trim() !== "");
       const dataLines = lines.slice(1); 
-      
       const nextFacs = { ...facilitators };
       const hubId = settings.schoolNumber;
 
@@ -115,7 +144,6 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
           const email = parts[1].toLowerCase();
           const nodeId = `${hubId}/FAC-${Math.floor(100 + Math.random() * 899)}`;
           const pin = `PIN-${Math.floor(1000 + Math.random() * 8999)}`;
-          
           nextFacs[email] = {
             name: parts[0].toUpperCase(),
             email,
@@ -132,7 +160,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       }
       setFacilitators(nextFacs);
       onSave({ facilitators: nextFacs });
-      alert(`FACULTY BUFFERED: ${dataLines.length} specialists added locally. Click 'SAVE ALL TO CLOUD' to finalize.`);
+      alert(`FACULTY BUFFERED: ${dataLines.length} specialists added.`);
       if (fileInputRef.current) fileInputRef.current.value = "";
     };
     reader.readAsText(file);
@@ -141,22 +169,17 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
   const handleAddOrUpdateStaff = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newStaff.name || !newStaff.email) return;
-    
     setIsEnrolling(true);
     try {
       const hubId = settings.schoolNumber;
       if (!hubId) throw new Error("Institutional Node required.");
-
       const targetEmail = newStaff.email.toLowerCase().trim();
       const targetName = newStaff.name.toUpperCase().trim();
       const uniqueCode = newStaff.uniqueCode || `PIN-${Math.floor(1000 + Math.random() * 8999)}`;
-      
       let nodeId = editingEmail ? facilitators[editingEmail].enrolledId : `${hubId}/FAC-${Math.floor(100 + Math.random() * 899).toString().padStart(3, '0')}`;
-      const invRegister = editingEmail ? facilitators[editingEmail].invigilations : createEmptyRegister();
-
       const staff: StaffAssignment = {
         ... (editingEmail ? facilitators[editingEmail] : {
-          invigilations: invRegister,
+          invigilations: createEmptyRegister(),
           account: { meritTokens: 0, monetaryCredits: 0, totalSubmissions: 0, unlockedQuestionIds: [] },
           marking: { dateTaken: '', dateReturned: '', inProgress: false }
         }),
@@ -168,19 +191,15 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         uniqueCode: uniqueCode,
         enrolledId: nodeId
       };
-
       await syncStaffToTables(staff);
-
       const nextFacilitators = { ...facilitators };
       if (editingEmail && editingEmail !== targetEmail) delete nextFacilitators[editingEmail];
       nextFacilitators[targetEmail] = staff;
-
       setFacilitators(nextFacilitators);
-      await onSave({ facilitators: nextFacilitators });
-      
+      onSave({ facilitators: nextFacilitators });
       setNewStaff({ name: '', email: '', role: 'FACILITATOR', subject: '', category: 'BASIC_SUBJECT_LEVEL', uniqueCode: '' });
       setEditingEmail(null);
-      alert(editingEmail ? "STAFF NODE MODULATED." : "STAFF NODE ACTIVATED.");
+      alert("STAFF NODE ACTIVATED.");
     } catch (err: any) {
       alert(`ENROLLMENT FAULT: ${err.message}`);
     } finally {
@@ -188,26 +207,8 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
     }
   };
 
-  const masterSchedule = useMemo(() => {
-     const slots: Record<string, { subject: string, staff: string[] }[]> = {};
-     Object.values(facilitators).forEach(f => {
-        f.invigilations.forEach(inv => {
-           if (inv.dutyDate && inv.timeSlot && inv.subject) {
-              const key = `${inv.dutyDate} ${inv.timeSlot}`;
-              if (!slots[key]) slots[key] = [];
-              const subIdx = slots[key].findIndex(s => s.subject === inv.subject);
-              if (subIdx >= 0) slots[key][subIdx].staff.push(f.name);
-              else slots[key].push({ subject: inv.subject, staff: [f.name] });
-           }
-        });
-     });
-     return slots;
-  }, [facilitators]);
-
   return (
     <div className="space-y-12 animate-in fade-in duration-700 pb-20 font-sans">
-      
-      {/* GLOBAL OPERATIONS */}
       <section className="bg-slate-900 border border-white/5 p-10 rounded-[4rem] shadow-2xl flex flex-col md:flex-row justify-between items-center gap-8">
          <div className="space-y-1 text-center md:text-left">
             <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em]">Faculty Matrix Hub</h4>
@@ -218,27 +219,27 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 2v6h-6"/><path d="M21 13a9 9 0 1 1-3-7.7L21 8"/></svg>
                {isEnrolling ? 'Syncing...' : 'Save All to Cloud'}
             </button>
+            <button onClick={handleDownloadTemplate} className="bg-white/5 hover:bg-white/10 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase border border-white/10 transition-all flex items-center gap-2">
+               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+               Download Template
+            </button>
             <button onClick={() => fileInputRef.current?.click()} className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg transition-all active:scale-95 flex items-center gap-2">
                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
                Bulk Staff Upload
             </button>
-            <button onClick={() => setShowSchedule(!showSchedule)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg transition-all">
-               {showSchedule ? 'Hide Master Hub' : 'Master Duty Schedule'}
+            <button onClick={handleGenerateSchedule} className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg transition-all active:scale-95 flex items-center gap-2">
+               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+               Generate Exam Schedule
             </button>
             <input type="file" ref={fileInputRef} onChange={handleBulkUpload} accept=".csv" className="hidden" />
          </div>
       </section>
 
-      {/* ENROLLMENT FORM */}
       {!isFacilitator && (
         <section className="bg-slate-950 text-white p-12 rounded-[4rem] border border-white/5 shadow-2xl relative overflow-hidden">
            <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/5 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
            <div className="relative space-y-8">
-              <div className="space-y-2">
-                 <h2 className="text-3xl font-black uppercase tracking-tighter">{editingEmail ? 'Modulate Specialist Node' : 'Direct Staff Enrollment'}</h2>
-                 <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Faculty Identity Provisioning</p>
-              </div>
-
+              <h2 className="text-3xl font-black uppercase tracking-tighter">{editingEmail ? 'Modulate Specialist Node' : 'Direct Staff Enrollment'}</h2>
               <form onSubmit={handleAddOrUpdateStaff} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                  <div className="space-y-1">
                    <label className="text-[8px] font-black text-slate-500 uppercase ml-2 tracking-widest">Legal Identity</label>
@@ -256,23 +257,22 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                    </select>
                  </div>
                  <button type="submit" disabled={isEnrolling} className="md:col-span-2 lg:col-span-3 bg-blue-600 hover:bg-blue-500 text-white py-6 rounded-3xl font-black text-[11px] uppercase shadow-2xl transition-all active:scale-95 tracking-widest">
-                    {isEnrolling ? "SYNCING SHARDS..." : editingEmail ? "Save Specialist Shard" : "Execute Faculty Handshake"}
+                    {isEnrolling ? "SYNCING..." : editingEmail ? "Save specialist Shard" : "Execute faculty Handshake"}
                  </button>
               </form>
            </div>
         </section>
       )}
 
-      {/* STAFF DIRECTORY */}
       <div className="grid grid-cols-1 gap-8">
-        {(Object.values(facilitators) as StaffAssignment[]).map((f, fIdx) => {
+        {Object.values(facilitators).map((f) => {
           const isExpanded = expandedStaff === f.email;
           return (
             <div key={f.email} className="bg-white rounded-[3.5rem] border border-gray-100 shadow-xl overflow-hidden group hover:shadow-2xl transition-all">
                <div className="p-8 flex flex-col lg:flex-row justify-between items-center gap-8">
                   <div className="flex items-center gap-6 flex-1">
-                     <div className="w-16 h-16 bg-blue-900 text-white rounded-3xl flex items-center justify-center font-black shadow-lg border-4 border-white relative">
-                        <span className="text-2xl">{f.taughtSubject?.charAt(0) || 'S'}</span>
+                     <div className="w-16 h-16 bg-blue-900 text-white rounded-3xl flex items-center justify-center font-black shadow-lg border-4 border-white relative text-2xl">
+                        {f.taughtSubject?.charAt(0) || 'S'}
                      </div>
                      <div className="space-y-1.5">
                         <div className="flex items-center gap-3">

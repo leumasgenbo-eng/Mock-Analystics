@@ -33,7 +33,6 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
 
   const syncToRelationalTables = async (student: StudentData) => {
     const hubId = settings.schoolNumber;
-    
     await supabase.from('uba_identities').upsert({
       email: student.parentEmail?.toLowerCase().trim() || `${student.indexNumber}@unitedbaylor.edu.gh`,
       full_name: student.name.toUpperCase().trim(),
@@ -59,13 +58,10 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
 
     setIsEnrolling(true);
     try {
-      // 1. Remove from Relational Tables (Supabase)
       if (indexNumber) {
         await supabase.from('uba_pupils').delete().eq('student_id', indexNumber);
         await supabase.from('uba_identities').delete().eq('node_id', indexNumber);
       }
-
-      // 2. Update Local State
       const nextStudents = students.filter(s => s.id !== id);
       setStudents(nextStudents);
       onSave({ students: nextStudents });
@@ -77,53 +73,61 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     }
   };
 
+  const handleGlobalCloudSync = async () => {
+    if (students.length === 0) return alert("No pupils found to sync.");
+    setIsEnrolling(true);
+    try {
+      const syncTasks = students.map(s => syncToRelationalTables(s));
+      await Promise.all(syncTasks);
+      onSave(); 
+      alert(`CLOUD SYNCHRONIZATION COMPLETE: ${students.length} pupils mirrored.`);
+    } catch (err: any) {
+      alert("Sync Failure: " + err.message);
+    } finally {
+      setIsEnrolling(false);
+    }
+  };
+
+  const handleDownloadTemplate = () => {
+    const header = "Full Name,Gender (M/F),Parent Name,Parent Contact,Parent Email\n";
+    const sample = "KOFI ADU,M,MR. ADU,0240001111,parent@email.com\n";
+    const blob = new Blob([header + sample], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "UBA_Pupil_Template.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleAddOrUpdateStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) return;
     setIsEnrolling(true);
-
     try {
       if (editingId) {
         const student = students.find(s => s.id === editingId);
         if (!student) return;
-
         const updatedPupil = { 
-          ...student, 
-          name: formData.name.toUpperCase(), 
-          gender: formData.gender, 
-          parentName: formData.guardianName.toUpperCase(), 
-          parentContact: formData.parentContact, 
-          parentEmail: formData.parentEmail.toLowerCase(),
-          email: formData.parentEmail.toLowerCase()
+          ...student, name: formData.name.toUpperCase(), gender: formData.gender, 
+          parentName: formData.guardianName.toUpperCase(), parentContact: formData.parentContact, 
+          parentEmail: formData.parentEmail.toLowerCase(), email: formData.parentEmail.toLowerCase()
         };
-
         const nextStudents = students.map(s => s.id === editingId ? updatedPupil : s);
         setStudents(nextStudents);
         await syncToRelationalTables(updatedPupil);
         onSave({ students: nextStudents });
-        alert("CANDIDATE MODULATED IN CLOUD REGISTRY.");
+        alert("CANDIDATE IDENTITY MODULATED.");
       } else {
         const nextSeq = students.length > 0 ? Math.max(...students.map(s => s.id)) + 1 : 101;
         const studentId = generateCompositeId(settings.schoolName, settings.academicYear, nextSeq);
         const accessPin = generateSixDigitPin();
-
         const newPupil: StudentData = {
-          id: nextSeq,
-          indexNumber: studentId,
-          uniqueCode: accessPin,
-          name: formData.name.toUpperCase().trim(),
-          gender: formData.gender,
-          email: formData.parentEmail.toLowerCase().trim() || `${studentId}@ssmap.app`,
-          parentName: formData.guardianName.toUpperCase().trim(),
-          parentContact: formData.parentContact.trim(),
-          parentEmail: formData.parentEmail.toLowerCase().trim(),
-          attendance: 0,
-          scores: {},
-          sbaScores: {},
-          examSubScores: {},
-          mockData: {}
+          id: nextSeq, indexNumber: studentId, uniqueCode: accessPin, name: formData.name.toUpperCase().trim(),
+          gender: formData.gender, email: formData.parentEmail.toLowerCase().trim() || `${studentId}@ssmap.app`,
+          parentName: formData.guardianName.toUpperCase().trim(), parentContact: formData.parentContact.trim(),
+          parentEmail: formData.parentEmail.toLowerCase().trim(), attendance: 0, scores: {}, sbaScores: {}, examSubScores: {}, mockData: {}
         };
-        
         const nextStudents = [...students, newPupil];
         setStudents(nextStudents);
         await syncToRelationalTables(newPupil);
@@ -139,21 +143,6 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     }
   };
 
-  const handleGlobalCloudSync = async () => {
-    if (students.length === 0) return alert("No pupils found to sync.");
-    setIsEnrolling(true);
-    try {
-      const syncTasks = students.map(s => syncToRelationalTables(s));
-      await Promise.all(syncTasks);
-      onSave(); 
-      alert(`CLOUD SYNCHRONIZATION COMPLETE: ${students.length} pupils mirrored to relational database.`);
-    } catch (err: any) {
-      alert("Sync Failure: " + err.message);
-    } finally {
-      setIsEnrolling(false);
-    }
-  };
-
   const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -162,35 +151,39 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
       const content = event.target?.result as string;
       const lines = content.split(/\r?\n/).filter(l => l.trim() !== "");
       const dataLines = lines.slice(1);
-      
       const nextStudents = [...students];
       let startId = nextStudents.length > 0 ? Math.max(...nextStudents.map(s => s.id)) + 1 : 101;
-
       for (const line of dataLines) {
         const parts = line.split(",").map(p => p.replace(/"/g, '').trim());
         if (parts[0]) {
           const studentId = generateCompositeId(settings.schoolName, settings.academicYear, startId);
           const pin = generateSixDigitPin();
           nextStudents.push({
-            id: startId++,
-            name: parts[0].toUpperCase(),
-            gender: (parts[1] || 'M').toUpperCase().startsWith('F') ? 'F' : 'M',
-            parentName: parts[2] || '',
-            parentContact: parts[3] || '',
-            parentEmail: parts[4] || '',
-            email: parts[4] || `${studentId.toLowerCase()}@ssmap.app`,
-            indexNumber: studentId,
-            uniqueCode: pin,
+            id: startId++, name: parts[0].toUpperCase(), gender: (parts[1] || 'M').toUpperCase().startsWith('F') ? 'F' : 'M',
+            parentName: parts[2] || '', parentContact: parts[3] || '', parentEmail: parts[4] || '',
+            email: parts[4] || `${studentId.toLowerCase()}@ssmap.app`, indexNumber: studentId, uniqueCode: pin,
             attendance: 0, scores: {}, sbaScores: {}, examSubScores: {}, mockData: {}
           });
         }
       }
       setStudents(nextStudents);
       onSave({ students: nextStudents });
-      alert(`BULK INGESTION SUCCESS: ${dataLines.length} candidates added to local buffer. Please click 'SAVE ALL TO CLOUD' to finalize.`);
+      alert(`BULK INGESTION SUCCESS: ${dataLines.length} candidates buffered.`);
       if (fileInputRef.current) fileInputRef.current.value = "";
     };
     reader.readAsText(file);
+  };
+
+  const toggleSbaLedger = (id: number) => {
+     setActiveSbaId(activeSbaId === id ? null : id);
+  };
+
+  const updateSbaScore = (studentId: number, subject: string, value: string) => {
+    const numeric = Math.min(100, Math.max(0, parseInt(value) || 0));
+    setStudents(prev => prev.map(s => {
+      if (s.id !== studentId) return s;
+      return { ...s, sbaScores: { ...(s.sbaScores || {}), [subject]: numeric } };
+    }));
   };
 
   const handleDownloadRegistry = () => {
@@ -200,16 +193,15 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `Registry_${settings.schoolNumber}.csv`;
+    link.download = `Pupil_Registry_${settings.schoolNumber}.csv`;
     link.click();
+    URL.revokeObjectURL(url);
   };
 
   const filteredStudents = students.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <div className="space-y-10 animate-in fade-in duration-500 pb-20 font-sans">
-      
-      {/* 1. Matrix Master Command Center */}
       <section className="bg-slate-950 border border-white/5 p-10 rounded-[4rem] shadow-2xl space-y-8">
          <div className="flex flex-col md:flex-row justify-between items-center gap-8">
             <div className="space-y-1">
@@ -221,11 +213,15 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 2v6h-6"/><path d="M21 13a9 9 0 1 1-3-7.7L21 8"/></svg>
                   {isEnrolling ? 'Syncing...' : 'Save All to Cloud'}
                </button>
+               <button onClick={handleDownloadTemplate} className="bg-white/5 hover:bg-white/10 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase border border-white/10 transition-all flex items-center gap-2">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Download Template
+               </button>
                <button onClick={() => fileInputRef.current?.click()} className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-xl transition-all active:scale-95 flex items-center gap-2">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
                   Bulk Enrollment (CSV)
                </button>
-               <button onClick={handleDownloadRegistry} className="bg-white/5 hover:bg-white/10 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase border border-white/10 transition-all flex items-center gap-2">
+               <button onClick={handleDownloadRegistry} className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase border border-indigo-100 transition-all flex items-center gap-2">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   Export Registry
                </button>
@@ -234,61 +230,32 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
          </div>
       </section>
 
-      {/* 2. Manual Entry Terminal */}
       <section className="bg-white p-10 rounded-[3.5rem] border border-gray-100 shadow-2xl relative overflow-hidden">
-        <div className="flex items-center gap-4 mb-8">
-           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg ${editingId ? 'bg-indigo-600' : 'bg-blue-950'}`}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
-           </div>
-           <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{editingId ? 'Modulate Candidate Node' : 'Individual Enrollment'}</h3>
-        </div>
-
+        <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter mb-8">{editingId ? 'Modulate Candidate Node' : 'Individual Enrollment'}</h3>
         <form onSubmit={handleAddOrUpdateStudent} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div className="space-y-1">
-             <label className="text-[9px] font-black text-slate-400 uppercase ml-2 tracking-widest">Pupil Full Identity</label>
-             <input type="text" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black uppercase outline-none focus:ring-4 focus:ring-blue-500/10" placeholder="SURNAME FIRST..." required />
-          </div>
-          <div className="space-y-1">
-             <label className="text-[9px] font-black text-slate-400 uppercase ml-2 tracking-widest">Gender</label>
-             <select value={formData.gender} onChange={e=>setFormData({...formData, gender: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none"><option value="M">MALE</option><option value="F">FEMALE</option></select>
-          </div>
-          <div className="space-y-1">
-             <label className="text-[9px] font-black text-slate-400 uppercase ml-2 tracking-widest">Parent / Guardian</label>
-             <input type="text" value={formData.guardianName} onChange={e=>setFormData({...formData, guardianName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black uppercase outline-none" placeholder="FULL NAME..." />
-          </div>
-          <div className="space-y-1">
-             <label className="text-[9px] font-black text-slate-400 uppercase ml-2 tracking-widest">Phone Contact</label>
-             <input type="text" value={formData.parentContact} onChange={e=>setFormData({...formData, parentContact: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none" placeholder="024 000 0000" />
-          </div>
-          <div className="space-y-1 md:col-span-2">
-             <label className="text-[9px] font-black text-slate-400 uppercase ml-2 tracking-widest">Notification Email</label>
-             <input type="email" value={formData.parentEmail} onChange={e=>setFormData({...formData, parentEmail: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none" placeholder="REPORTS@PARENT.COM" />
-          </div>
-          
+          <input type="text" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black uppercase" placeholder="PUPIL FULL IDENTITY" required />
+          <select value={formData.gender} onChange={e=>setFormData({...formData, gender: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black"><option value="M">MALE</option><option value="F">FEMALE</option></select>
+          <input type="text" value={formData.guardianName} onChange={e=>setFormData({...formData, guardianName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black uppercase" placeholder="GUARDIAN NAME" />
+          <input type="text" value={formData.parentContact} onChange={e=>setFormData({...formData, parentContact: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black" placeholder="PHONE CONTACT" />
+          <input type="email" value={formData.parentEmail} onChange={e=>setFormData({...formData, parentEmail: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black md:col-span-2" placeholder="NOTIFICATION EMAIL" />
           <div className="lg:col-span-3 pt-4 flex gap-4">
-             <button type="submit" disabled={isEnrolling} className={`flex-1 ${editingId ? 'bg-indigo-600' : 'bg-blue-900'} text-white py-5 rounded-3xl font-black text-[11px] uppercase tracking-[0.3em] shadow-2xl active:scale-95 transition-all`}>
+             <button type="submit" disabled={isEnrolling} className={`flex-1 ${editingId ? 'bg-indigo-600' : 'bg-blue-900'} text-white py-5 rounded-3xl font-black text-[11px] uppercase tracking-widest shadow-2xl transition-all`}>
                 {isEnrolling ? "Syncing..." : editingId ? "Save Shard" : "Enroll Candidate"}
              </button>
-             {editingId && <button type="button" onClick={() => {setEditingId(null); setFormData({name:'',gender:'M',guardianName:'',parentContact:'',parentEmail:''});}} className="px-10 bg-slate-100 text-slate-500 rounded-3xl font-black text-[11px] uppercase tracking-widest">Cancel</button>}
+             {editingId && <button type="button" onClick={() => {setEditingId(null); setFormData({name:'',gender:'M',guardianName:'',parentContact:'',parentEmail:''});}} className="px-10 bg-slate-100 text-slate-500 rounded-3xl font-black text-[11px] uppercase">Cancel</button>}
           </div>
         </form>
       </section>
 
-      {/* 3. Search & Pupil Ledger Matrix */}
       <div className="space-y-6">
          <div className="relative">
-            <input 
-              type="text" 
-              placeholder="SEARCH CANDIDATE IDENTITY BY NAME..." 
-              value={searchTerm} 
-              onChange={e => setSearchTerm(e.target.value)} 
-              className="w-full bg-white border border-gray-100 rounded-3xl px-14 py-6 text-sm font-bold shadow-xl outline-none focus:ring-8 focus:ring-blue-500/5 transition-all uppercase" 
-            />
+            <input type="text" placeholder="SEARCH CANDIDATE IDENTITY..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-white border border-gray-100 rounded-3xl px-14 py-6 text-sm font-bold shadow-xl outline-none transition-all uppercase" />
             <svg className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
          </div>
 
          <div className="grid grid-cols-1 gap-6">
             {filteredStudents.map(s => {
+               const isOpen = activeSbaId === s.id;
                return (
                  <div key={s.id} className="bg-white rounded-[2.5rem] border border-gray-100 shadow-lg overflow-hidden group hover:border-blue-300 transition-all">
                     <div className="p-8 flex flex-col md:flex-row justify-between items-center gap-8">
@@ -307,9 +274,30 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
                        
                        <div className="flex gap-2">
                           <button onClick={() => { setEditingId(s.id); setFormData({ name: s.name, gender: s.gender === 'F' ? 'F' : 'M', guardianName: s.parentName || '', parentContact: s.parentContact || '', parentEmail: s.parentEmail || '' }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="bg-gray-50 text-slate-500 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase border border-gray-200 hover:bg-white transition-all">Edit Identity</button>
+                          <button onClick={() => toggleSbaLedger(s.id)} className={`px-6 py-2.5 rounded-xl font-black text-[10px] uppercase transition-all shadow-md ${isOpen ? 'bg-blue-900 text-white' : 'bg-indigo-50 text-indigo-600'}`}>SBA Scores</button>
                           <button onClick={() => handleDeleteStudent(s.id, s.indexNumber)} className="bg-red-50 text-red-600 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase border border-red-100 hover:bg-red-600 hover:text-white transition-all">Purge Shard</button>
                        </div>
                     </div>
+                    {isOpen && (
+                       <div className="px-8 pb-8 pt-4 bg-slate-50 border-t border-gray-100 animate-in slide-in-from-top-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                             {subjects.map(sub => (
+                                <div key={sub} className="space-y-1">
+                                   <label className="text-[7px] font-black text-slate-400 uppercase tracking-widest block ml-1">{sub}</label>
+                                   <input 
+                                     type="number" 
+                                     value={s.sbaScores?.[sub] || 0} 
+                                     onChange={(e) => updateSbaScore(s.id, sub, e.target.value)}
+                                     className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs font-black text-blue-900 outline-none focus:ring-2 focus:ring-blue-500/20"
+                                   />
+                                </div>
+                             ))}
+                          </div>
+                          <div className="mt-6 flex justify-end">
+                             <button onClick={() => { onSave(); toggleSbaLedger(s.id); }} className="bg-blue-900 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">Sync SBA Shards</button>
+                          </div>
+                       </div>
+                    )}
                  </div>
                );
             })}
