@@ -80,8 +80,8 @@ export interface InvigilationSlot {
 }
 
 export interface StaffAccount {
-  meritTokens: number;      // Used for acquiring/buying questions
-  monetaryCredits: number;  // GHS value from trading or royalties
+  meritTokens: number;      
+  monetaryCredits: number;  
   totalSubmissions: number;
   unlockedQuestionIds: string[];
 }
@@ -398,6 +398,7 @@ export interface MasterQuestion {
   indicator: string;
   indicatorCode?: string;
   facilitatorCode?: string;
+  facilitatorName?: string;
   questionText: string;
   instruction: string;
   correctKey: string;
@@ -407,8 +408,9 @@ export interface MasterQuestion {
   parts: QuestionSubPart[];
   diagramUrl?: string;
   isTraded?: boolean;
-  rating?: number; // 0-5
+  rating?: number; 
   usageCount?: number;
+  wrongCount?: number;
 }
 
 export interface PracticeAssignment {

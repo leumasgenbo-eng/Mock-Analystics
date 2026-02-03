@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { MasterQuestion, PracticeAssignment, StaffAssignment, GlobalSettings } from '../../types';
+import { MasterQuestion, StaffAssignment, GlobalSettings } from '../../types';
 import { supabase } from '../../supabaseClient';
 
 interface SubjectQuestionsBankProps {
@@ -13,136 +13,128 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
   const [selectedSubject, setSelectedSubject] = useState(activeFacilitator?.taughtSubject || subjects[0]);
   const [masterBank, setMasterBank] = useState<MasterQuestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isProcessingAction, setIsProcessingAction] = useState(false);
-  const [collectedQs, setCollectedQs] = useState<MasterQuestion[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [basket, setBasket] = useState<MasterQuestion[]>([]);
   
   const fetchBank = useCallback(async () => {
     setIsLoading(true);
-    const bankId = `master_bank_${selectedSubject.trim().replace(/\s+/g, '')}`;
-    try {
-      const { data } = await supabase.from('uba_persistence').select('payload').eq('id', bankId).maybeSingle();
-      setMasterBank((data?.payload as MasterQuestion[]) || []);
-    } catch (err) {
-      setMasterBank([]);
-    } finally {
-      setIsLoading(false);
+    const { data } = await supabase.from('uba_persistence').select('payload').like('id', 'likely_%');
+    if (data) {
+      const flat: MasterQuestion[] = [];
+      data.forEach(row => {
+        if (Array.isArray(row.payload)) {
+          row.payload.forEach(q => {
+            if (q.subject === selectedSubject) flat.push(q);
+          });
+        }
+      });
+      setMasterBank(flat);
     }
+    setIsLoading(false);
   }, [selectedSubject]);
 
   useEffect(() => { fetchBank(); }, [fetchBank]);
 
-  const toggleCollect = async (q: MasterQuestion) => {
-    const isAcquired = activeFacilitator?.account?.unlockedQuestionIds.includes(q.id) || q.facilitatorCode === activeFacilitator?.uniqueCode;
-    
-    if (!isAcquired) {
-       if (window.confirm(`ACQUIRE SHARD: Spend 1 Merit Token to unlock this question in real-time?`)) {
-          setIsProcessingAction(true);
-          const success = await handleBatchLedgerDebit([q.id], 'DATA_ACQUISITION', 'Debit: Unlocked network shard.');
-          setIsProcessingAction(false);
-          if (success) {
-            activeFacilitator?.account?.unlockedQuestionIds.push(q.id);
-          } else return;
-       } else return;
-    }
+  // Group by Indicator
+  const groupedQuestions = useMemo(() => {
+    const groups: Record<string, MasterQuestion[]> = {};
+    masterBank.forEach(q => {
+      const key = `${q.indicatorCode || 'N/A'} - ${q.indicator || 'GENERAL'}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(q);
+    });
+    return groups;
+  }, [masterBank]);
 
-    setCollectedQs(prev => prev.some(x => x.id === q.id) ? prev.filter(x => x.id !== q.id) : [...prev, q]);
+  const toggleBasket = (q: MasterQuestion) => {
+    setBasket(prev => prev.some(x => x.id === q.id) ? prev.filter(x => x.id !== q.id) : [...prev, q]);
   };
 
-  const handleBatchLedgerDebit = async (qIds: string[], category: string, desc: string): Promise<boolean> => {
-     if (!activeFacilitator?.email) return false;
-     const totalDebit = qIds.length;
+  const handleForwardToPracticeHub = async () => {
+    if (basket.length === 0) return alert("Select shards to forward.");
+    setIsSyncing(true);
+    try {
+      const hubId = settings.schoolNumber;
+      const subKey = selectedSubject.replace(/\s+/g, '');
+      const shardId = `practice_shards_${hubId}_${subKey}`;
 
-     try {
-        const { data: ident } = await supabase.from('uba_identities').select('merit_balance').eq('email', activeFacilitator.email).single();
-        if ((ident?.merit_balance || 0) < totalDebit) {
-          alert(`Insufficient credits. Required: ${totalDebit}, Available: ${ident?.merit_balance || 0}`);
-          return false;
+      await supabase.from('uba_instructional_shards').upsert({
+        id: shardId,
+        hub_id: hubId,
+        payload: {
+          id: shardId,
+          title: `Practice: ${selectedSubject}`,
+          subject: selectedSubject,
+          timeLimit: 30,
+          questions: basket,
+          pushedBy: activeFacilitator?.name || 'ADMIN',
+          timestamp: new Date().toISOString()
         }
-
-        // Atomic update of identity balance
-        const { error: updateError } = await supabase
-          .from('uba_identities')
-          .update({ merit_balance: ident!.merit_balance - totalDebit })
-          .eq('email', activeFacilitator.email);
-        
-        if (updateError) throw updateError;
-
-        // Single ledger entry for the batch
-        await supabase.from('uba_transaction_ledger').insert({
-           identity_email: activeFacilitator.email,
-           hub_id: settings.schoolNumber,
-           event_category: category,
-           type: 'DEBIT',
-           asset_type: 'MERIT_TOKEN',
-           amount: totalDebit,
-           description: desc,
-           reference_ids: qIds,
-           metadata: { subject: selectedSubject, count: qIds.length }
-        });
-
-        return true;
-     } catch (e) { 
-        console.error(e); 
-        alert("Transaction Failed: Network handshake interrupted.");
-        return false;
-     }
+      });
+      alert("MATRIX HANDSHAKE SUCCESSFUL: Selected shards mirrored to Pupil Practice Hub.");
+    } catch (e) {
+      alert("Sync Interrupted.");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
-  const handleDownloadSelectedText = async () => {
-    if (collectedQs.length === 0) return alert("Select shards to download.");
+  const handleDownloadTextFile = () => {
+    if (basket.length === 0) return alert("Basket is vacant.");
     
-    // Check if any selected items are locked
-    const lockedIds = collectedQs
-      .filter(q => !activeFacilitator?.account?.unlockedQuestionIds.includes(q.id) && q.facilitatorCode !== activeFacilitator?.uniqueCode)
-      .map(q => q.id);
+    let content = `UNITED BAYLOR ACADEMY - ASSESSMENT SHARDS\n`;
+    content += `SUBJECT: ${selectedSubject.toUpperCase()}\n`;
+    content += `DATE: ${new Date().toLocaleDateString()}\n`;
+    content += `==========================================\n\n`;
+    
+    content += `SECTION I: EXAMINATION ITEMS\n`;
+    content += `------------------------------------------\n\n`;
+    basket.forEach((q, i) => {
+      content += `[${i + 1}] TYPE: ${q.type}\n`;
+      if (q.instruction) content += `INSTRUCTION: ${q.instruction}\n`;
+      content += `CONTENT: ${q.questionText}\n`;
+      if (q.diagramUrl) content += `ATTACHED DIAGRAM NODE: ${q.diagramUrl}\n`;
+      content += `STRAND: ${q.strandCode} ${q.strand} | INDICATOR: ${q.indicatorCode} ${q.indicator}\n\n`;
+    });
 
-    if (lockedIds.length > 0) {
-      if (!window.confirm(`BULK DOWNLOAD: You have ${lockedIds.length} locked items in your selection. Proced with batch unlock (1 token per item)?`)) return;
-      
-      setIsProcessingAction(true);
-      const success = await handleBatchLedgerDebit(lockedIds, 'DATA_DOWNLOAD', `Bulk Unlock: ${lockedIds.length} shards for extraction.`);
-      setIsProcessingAction(false);
-      if (!success) return;
-      
-      // Update local unlock state
-      lockedIds.forEach(id => activeFacilitator?.account?.unlockedQuestionIds.push(id));
-    }
-
-    let content = `UNITED BAYLOR ACADEMY EXPORT\nSUBJECT: ${selectedSubject.toUpperCase()}\n----------------------------------\n\n`;
-    collectedQs.forEach((q, idx) => {
-      content += `[${idx + 1}] ${q.questionText}\nKEY/SCHEME: ${q.correctKey}\nSTRAND: ${q.strand}\n\n`;
+    content += `\nSECTION II: VERIFIED ANSWERS & SCHEMES\n`;
+    content += `------------------------------------------\n\n`;
+    basket.forEach((q, i) => {
+      content += `[${i + 1}] RESULT: ${q.correctKey || q.answerScheme || 'NO RUBRIC STORED'}\n`;
+      content += `BLOOM SCALE: ${q.blooms}\n`;
+      content += `SUBMITTER: ${q.facilitatorName || 'NETWORK_CORE'}\n`;
+      content += `------------------------------------------\n`;
     });
 
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Export_${selectedSubject.replace(/\s/g, '_')}.txt`;
+    link.download = `UBA_Shards_${selectedSubject.replace(/\s/g, '_')}.txt`;
     link.click();
     URL.revokeObjectURL(url);
-    setCollectedQs([]);
-    alert("EXTRACTION SUCCESSFUL: Data mirrored to local text file.");
+    alert("EXTRACTION SUCCESSFUL: Questions and Answers Partitioned.");
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 font-sans pb-20">
-      {isProcessingAction && (
+    <div className="space-y-8 animate-in fade-in duration-500 font-sans pb-32">
+      {isSyncing && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex flex-col items-center justify-center space-y-6">
            <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-           <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Processing Network Transaction...</p>
+           <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Mirroring Shards to Cloud Shard Table...</p>
         </div>
       )}
 
-      <div className="bg-slate-950 text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/10 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
-        <div className="relative flex justify-between items-center gap-8">
-           <div className="space-y-1">
-              <h2 className="text-2xl font-black uppercase tracking-tight leading-none">Instructional Matrix Bank</h2>
-              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Real-time Shard Acquisition Mode</p>
+      <div className="bg-slate-950 text-white p-12 rounded-[4rem] shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
+        <div className="relative flex flex-col xl:flex-row justify-between items-center gap-10">
+           <div className="space-y-3 text-center xl:text-left">
+              <h2 className="text-3xl font-black uppercase tracking-tight">Instructional Shard Bank</h2>
+              <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.5em]">United Baylor Network-Wide Mastery Ledger</p>
            </div>
-           <div className="flex bg-white/5 border border-white/10 rounded-2xl p-1 overflow-x-auto max-w-full">
+           <div className="flex bg-white/5 p-1.5 rounded-3xl border border-white/10 backdrop-blur-md overflow-x-auto no-scrollbar max-w-full">
               {subjects.map(s => (
-                <button key={s} onClick={() => setSelectedSubject(s)} className={`px-5 py-2.5 rounded-xl text-[9px] font-black uppercase transition-all whitespace-nowrap ${selectedSubject === s ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+                <button key={s} onClick={() => setSelectedSubject(s)} className={`px-6 py-3 rounded-2xl text-[9px] font-black uppercase transition-all whitespace-nowrap ${selectedSubject === s ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
                   {s}
                 </button>
               ))}
@@ -150,78 +142,109 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+        {/* Shard Basket */}
         <div className="lg:col-span-4 space-y-6">
-           <div className="bg-white border border-gray-100 rounded-[2.5rem] p-8 shadow-xl space-y-6">
-              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-l-4 border-blue-900 pl-4">Network Extraction Controls</h4>
-              <button 
-                onClick={handleDownloadSelectedText}
-                disabled={collectedQs.length === 0}
-                className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg active:scale-95 transition-all disabled:opacity-40"
-              >
-                Download {collectedQs.length} Shards (.txt)
-              </button>
-              <p className="text-[8px] text-slate-400 font-bold uppercase text-center italic">"Downloads are recorded in real-time for integrity auditing."</p>
+           <div className="bg-white border border-gray-100 rounded-[3rem] p-10 shadow-xl space-y-8 h-fit sticky top-24">
+              <div className="space-y-1">
+                 <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Active Extraction Basket</h4>
+                 <p className="text-[9px] font-bold text-slate-400 uppercase">{basket.length} Selected Shards</p>
+              </div>
+              
+              <div className="space-y-3 max-h-[300px] overflow-y-auto no-scrollbar">
+                 {basket.map(q => (
+                    <div key={q.id} className="bg-slate-50 p-4 rounded-2xl flex justify-between items-center border border-gray-100 group animate-in slide-in-from-left-2">
+                       <p className="text-[10px] font-black text-blue-900 uppercase truncate max-w-[200px]">{q.questionText}</p>
+                       <button onClick={() => toggleBasket(q)} className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                       </button>
+                    </div>
+                 ))}
+                 {basket.length === 0 && <div className="py-12 text-center opacity-20 italic text-[10px] uppercase font-black">Basket is vacant</div>}
+              </div>
+
+              <div className="pt-4 space-y-4">
+                 <button 
+                   onClick={handleForwardToPracticeHub}
+                   disabled={basket.length === 0}
+                   className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-5 rounded-[2rem] font-black uppercase text-[10px] tracking-widest shadow-xl transition-all disabled:opacity-40"
+                 >
+                   Push to Practice Hub
+                 </button>
+                 <button 
+                   onClick={handleDownloadTextFile}
+                   disabled={basket.length === 0}
+                   className="w-full bg-slate-950 hover:bg-black text-white py-5 rounded-[2rem] font-black uppercase text-[10px] tracking-widest shadow-xl transition-all disabled:opacity-40"
+                 >
+                   Download Notepad (.txt)
+                 </button>
+              </div>
            </div>
-           
-           {activeFacilitator && (
-             <div className="bg-indigo-900 text-white p-8 rounded-[2.5rem] shadow-2xl space-y-2">
-                <span className="text-[8px] font-black uppercase text-blue-300">Live Merit Balance</span>
-                <p className="text-3xl font-black font-mono">{(activeFacilitator as any).account?.meritTokens || 0} CREDITS</p>
-             </div>
-           )}
         </div>
 
-        <div className="lg:col-span-8 bg-white border border-gray-100 rounded-[2.5rem] shadow-xl overflow-hidden flex flex-col">
+        {/* Shard Explorer */}
+        <div className="lg:col-span-8 space-y-12">
            {isLoading ? (
-              <div className="py-40 flex flex-col items-center justify-center gap-4">
-                 <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                 <p className="text-[9px] font-black text-slate-400 uppercase">Accessing Master Shards...</p>
+              <div className="py-40 flex flex-col items-center justify-center gap-6 opacity-30">
+                 <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                 <p className="text-[10px] font-black uppercase tracking-[0.4em]">Querying Global Register...</p>
               </div>
            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                   <thead className="bg-slate-900 text-slate-500 text-[8px] font-black uppercase tracking-widest border-b border-slate-800">
-                      <tr>
-                         <th className="px-6 py-6 w-20 text-center">Capture</th>
-                         <th className="px-6 py-6 min-w-[300px]">Content Lineage</th>
-                         <th className="px-6 py-6 text-right pr-10">Vault Logic</th>
-                      </tr>
-                   </thead>
-                   <tbody className="divide-y divide-gray-50">
-                      {masterBank.map((q) => {
-                         const isMyQuestion = q.facilitatorCode === activeFacilitator?.uniqueCode;
-                         const isUnlocked = activeFacilitator?.account?.unlockedQuestionIds.includes(q.id) || isMyQuestion;
-                         const isCollected = collectedQs.some(x => x.id === q.id);
-                         return (
-                            <tr key={q.id} className={`hover:bg-blue-50/20 transition-all ${isCollected ? 'bg-blue-50/10' : ''}`}>
-                               <td className="px-6 py-5 text-center">
-                                  <button onClick={() => toggleCollect(q)} className={`w-12 h-12 rounded-2xl border-2 flex items-center justify-center transition-all ${isUnlocked ? (isCollected ? 'bg-blue-600 border-blue-600 text-white' : 'border-emerald-200 text-emerald-400') : 'border-slate-100 text-slate-300 hover:border-blue-400'}`}>
-                                     {isUnlocked ? (isCollected ? '✓' : '+') : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>}
-                                  </button>
-                               </td>
-                               <td className="px-6 py-5">
-                                  <div className="space-y-1">
-                                     <p className={`text-xs font-black uppercase leading-relaxed ${isUnlocked ? 'text-slate-800' : 'text-slate-300 blur-[2px]'}`}>
-                                        {isUnlocked ? `"${q.questionText}"` : "Real-time Encryption Active"}
-                                     </p>
-                                     <div className="flex gap-4 text-[7px] font-bold text-slate-400 uppercase tracking-widest">
-                                        <span>Strand: {q.strand}</span>
-                                        <span>•</span>
-                                        <span>Scale: {q.blooms}</span>
-                                     </div>
+             Object.entries(groupedQuestions).map(([indicatorKey, qList]) => (
+                <div key={indicatorKey} className="bg-white border border-gray-100 rounded-[3rem] shadow-xl overflow-hidden animate-in fade-in duration-700">
+                   <div className="bg-slate-900 px-10 py-6 border-b border-white/5 flex justify-between items-center">
+                      <div className="space-y-1">
+                         <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">Indicator Node</span>
+                         <h4 className="text-xs font-black text-white uppercase">{indicatorKey}</h4>
+                      </div>
+                      <span className="bg-white/10 text-white/60 px-3 py-1 rounded-full text-[8px] font-black uppercase">{qList.length} SHARDS</span>
+                   </div>
+                   <div className="divide-y divide-gray-50">
+                      {qList.map(q => {
+                        const isSelected = basket.some(x => x.id === q.id);
+                        return (
+                          <div key={q.id} className="p-8 hover:bg-slate-50 transition-colors flex items-start gap-8 group">
+                             <button 
+                               onClick={() => toggleBasket(q)}
+                               className={`w-12 h-12 rounded-2xl border-2 flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'border-gray-100 text-transparent group-hover:border-blue-200'}`}
+                             >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
+                             </button>
+                             <div className="flex-1 space-y-4">
+                                <div className="flex justify-between items-start">
+                                   <div className="space-y-1">
+                                      <p className="text-[13px] font-black text-slate-800 uppercase leading-relaxed">"{q.questionText}"</p>
+                                      <div className="flex items-center gap-4 text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                                         <span>Strand: {q.strandCode || 'S0'}</span>
+                                         <span>•</span>
+                                         <span>Bloom: {q.blooms}</span>
+                                         <span>•</span>
+                                         <span>Type: {q.type}</span>
+                                      </div>
+                                   </div>
+                                </div>
+                                {q.diagramUrl && (
+                                  <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100/50">
+                                     <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest block mb-2">Diagram Payload</span>
+                                     <code className="text-[10px] font-mono text-blue-900 break-all">{q.diagramUrl}</code>
                                   </div>
-                               </td>
-                               <td className="px-6 py-5 text-right pr-10">
-                                  <span className={`text-[8px] font-black uppercase ${isMyQuestion ? 'text-blue-500' : isUnlocked ? 'text-emerald-500' : 'text-amber-500'}`}>
-                                     {isMyQuestion ? 'My Shard' : isUnlocked ? 'Acquired' : 'Locked (-1 Credit)'}
-                                  </span>
-                               </td>
-                            </tr>
-                         );
+                                )}
+                                <div className="pt-2 border-t border-gray-50 flex justify-between items-center text-[9px] font-black uppercase text-slate-300">
+                                   <span>Submitter: {q.facilitatorName} ({q.facilitatorCode})</span>
+                                   <span className="text-emerald-500">{isSelected ? 'Added to Extraction' : 'In Cloud Storage'}</span>
+                                </div>
+                             </div>
+                          </div>
+                        );
                       })}
-                   </tbody>
-                </table>
+                   </div>
+                </div>
+             ))
+           )}
+           {masterBank.length === 0 && !isLoading && (
+              <div className="py-60 text-center opacity-20 flex flex-col items-center gap-6 border-4 border-dashed border-gray-100 rounded-[4rem]">
+                 <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 2v20m10-10H2"/></svg>
+                 <p className="font-black uppercase text-sm tracking-[0.5em]">No instructional shards found for this subject</p>
               </div>
            )}
         </div>
