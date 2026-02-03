@@ -1,170 +1,206 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { GlobalSettings, StudentData, StaffAssignment, ForwardingData, PaymentParticulars, StaffRewardTrade } from '../../types';
+import React, { useState, useEffect } from 'react';
+import { GlobalSettings, StudentData, StaffAssignment, ForwardingData, PaymentParticulars } from '../../types';
 import { supabase } from '../../supabaseClient';
 
 interface EnrolmentForwardingPortalProps {
   settings: GlobalSettings;
   students: StudentData[];
+  setStudents: React.Dispatch<React.SetStateAction<StudentData[]>>;
   facilitators: Record<string, StaffAssignment>;
   isFacilitator?: boolean;
   activeFacilitator?: { name: string; subject: string; email?: string } | null;
 }
 
-const EnrolmentForwardingPortal: React.FC<EnrolmentForwardingPortalProps> = ({ settings, students, facilitators, isFacilitator, activeFacilitator }) => {
-  const [feedback, setFeedback] = useState('');
+const GH_LANGS = ["TWI (AKUAPEM)", "TWI (ASANTE)", "FANTE", "GA", "EWE", "DANGME", "NZEMA", "KASEM", "GONJA"];
+
+const EnrolmentForwardingPortal: React.FC<EnrolmentForwardingPortalProps> = ({ settings, students, setStudents, facilitators, isFacilitator, activeFacilitator }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [forwardingData, setForwardingData] = useState<ForwardingData | null>(null);
-  const [rewardHistory, setRewardHistory] = useState<StaffRewardTrade[]>([]);
+  const [bulkPayment, setBulkPayment] = useState<Partial<PaymentParticulars>>({
+    transactionId: '', amount: 0, date: new Date().toISOString().split('T')[0]
+  });
 
   useEffect(() => {
     const fetchData = async () => {
-      // 1. Fetch regular forwarding data
-      const { data: fwd } = await supabase
-        .from('uba_persistence')
-        .select('payload')
-        .eq('id', `forward_${settings.schoolNumber}`)
-        .maybeSingle();
-      if (fwd && fwd.payload) {
-        setForwardingData(fwd.payload as ForwardingData);
-        setFeedback(fwd.payload.feedback || '');
-      }
-
-      // 2. Fetch Reward Status
-      const { data: rewards } = await supabase
-        .from('uba_persistence')
-        .select('payload')
-        .eq('id', 'global_staff_rewards')
-        .maybeSingle();
-      if (rewards?.payload && activeFacilitator) {
-         setRewardHistory((rewards.payload as StaffRewardTrade[]).filter(r => r.staffName === activeFacilitator.name));
-      }
+      const { data } = await supabase.from('uba_persistence').select('payload').eq('id', `forward_${settings.schoolNumber}`).maybeSingle();
+      if (data?.payload) setForwardingData(data.payload as ForwardingData);
     };
     fetchData();
-  }, [settings.schoolNumber, activeFacilitator]);
+  }, [settings.schoolNumber]);
 
-  const handleForwardToHQ = async () => {
+  const updatePupilLanguage = (id: number, lang: string) => {
+    setStudents(prev => prev.map(s => s.id === id ? { ...s, ghanaianLanguage: lang } : s));
+  };
+
+  const togglePupilPayment = (id: number) => {
+    setStudents(prev => prev.map(s => s.id === id ? { ...s, paymentStatus: s.paymentStatus === 'PAID' ? 'UNPAID' : 'PAID' } : s));
+  };
+
+  const handleRecommendStaff = (email: string, role: 'EXAMINER' | 'INVIGILATOR') => {
+    const nextFwd = forwardingData || {
+      schoolId: settings.schoolNumber, schoolName: settings.schoolName, feedback: '',
+      pupilLanguages: {}, pupilPayments: {}, facilitatorRecommendations: {},
+      submissionTimestamp: new Date().toISOString(), approvalStatus: 'PENDING'
+    };
+    
+    const recs = { ...nextFwd.facilitatorRecommendations };
+    if (recs[email] === role) delete recs[email];
+    else recs[email] = role;
+    
+    setForwardingData({ ...nextFwd, facilitatorRecommendations: recs });
+  };
+
+  const handlePushToHQ = async () => {
     setIsSyncing(true);
     try {
-      const payload: ForwardingData = forwardingData || {
+      const languages: Record<number, string> = {};
+      const payments: Record<number, boolean> = {};
+      students.forEach(s => {
+        if (s.ghanaianLanguage) languages[s.id] = s.ghanaianLanguage;
+        payments[s.id] = s.paymentStatus === 'PAID';
+      });
+
+      const payload: ForwardingData = {
         schoolId: settings.schoolNumber,
         schoolName: settings.schoolName,
-        feedback: feedback,
-        pupilPayments: {},
-        facilitatorPayments: {},
+        feedback: forwardingData?.feedback || '',
+        pupilLanguages: languages,
+        pupilPayments: payments,
+        bulkPayment: bulkPayment.transactionId ? bulkPayment as PaymentParticulars : undefined,
+        facilitatorRecommendations: forwardingData?.facilitatorRecommendations || {},
         submissionTimestamp: new Date().toISOString(),
         approvalStatus: 'PENDING'
       };
-      payload.feedback = feedback;
+
       await supabase.from('uba_persistence').upsert({
         id: `forward_${settings.schoolNumber}`,
+        hub_id: settings.schoolNumber,
         payload: payload,
         last_updated: new Date().toISOString()
       });
-      alert("HQ HANDSHAKE SUCCESSFUL.");
+
+      alert("DATA DISPATCHED: Handshaking with SuperAdmin for Serialization.");
     } catch (err: any) {
-      alert(`Sync Failed: ${err.message}`);
+      alert(`Dispatch Fault: ${err.message}`);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  const visibleStaff = (Object.values(facilitators) as StaffAssignment[]).filter(f => {
-    if (!isFacilitator) return true;
-    return f.name.toUpperCase() === activeFacilitator?.name.toUpperCase();
-  });
-
   return (
-    <div className="space-y-10 animate-in fade-in duration-500 max-w-6xl mx-auto pb-20">
+    <div className="space-y-10 animate-in fade-in duration-500 pb-20 font-sans">
       
-      {/* 1. Facilitator Reward Status - Focus for this update */}
-      {isFacilitator && rewardHistory.length > 0 && (
-        <section className="bg-emerald-950 text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden group">
-           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-           <div className="relative space-y-6">
-              <div className="flex items-center gap-4 border-b border-white/10 pb-6">
-                 <div className="w-12 h-12 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-lg">
-                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                 </div>
-                 <div>
-                    <h3 className="text-xl font-black uppercase tracking-tight">Instructional Reward Ledger</h3>
-                    <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mt-1">Verified Credit Shards from HQ Valuation</p>
-                 </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 {rewardHistory.map((tr) => (
-                    <div key={tr.id} className="bg-white/5 border border-white/10 p-6 rounded-3xl flex justify-between items-center group/item hover:bg-white/10 transition-all">
-                       <div className="space-y-1">
-                          <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest block">Shard Pack #{tr.id.slice(-4)}</span>
-                          <p className="text-[11px] font-bold uppercase">{tr.subject} — {tr.submissionCount} Items</p>
-                       </div>
-                       <div className="text-right">
-                          <span className={`text-[9px] font-black px-3 py-1 rounded-lg uppercase ${tr.status === 'PAID' ? 'bg-emerald-500 text-white' : 'bg-white/10 text-emerald-400'}`}>
-                             {tr.status === 'PAID' ? 'DISBURSED' : tr.status === 'APPROVED' ? `GHS ${tr.approvedAmount}` : tr.status}
-                          </span>
-                       </div>
-                    </div>
-                 ))}
-              </div>
-           </div>
-        </section>
-      )}
-
-      {/* Standard Forwarding UI */}
-      {!isFacilitator && (
-        <section className="bg-white p-8 rounded-[3rem] shadow-2xl border border-gray-100 relative overflow-hidden">
-          <div className="relative space-y-6">
-             <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center shadow-lg">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                </div>
-                <div>
-                   <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight leading-none">Institutional Feedback Hub</h3>
-                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Direct stream to SuperAdmin Marketing Desk</p>
-                </div>
-             </div>
-             <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="Communicate service feedback..." className="w-full bg-slate-50 border border-slate-200 rounded-[2rem] p-8 text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-orange-500/5 min-h-[160px] shadow-inner" />
-             <div className="flex justify-end px-4">
-                <button onClick={handleForwardToHQ} disabled={isSyncing} className="bg-orange-600 hover:bg-orange-700 text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl transition-all active:scale-95 disabled:opacity-50">
-                  {isSyncing ? 'Syncing...' : 'Broadcast Feedback'}
-                </button>
-             </div>
-          </div>
-        </section>
-      )}
-
-      <section className="bg-white rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden">
-         <div className="bg-slate-900 px-10 py-8 flex justify-between items-center">
-            <div className="space-y-1">
-               <h3 className="text-2xl font-black text-white uppercase tracking-tight">Facilitator Payroll Ledger</h3>
-               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Enrolment revenue disbursement confirmation</p>
+      {/* 1. Header: Status Node */}
+      <header className="bg-slate-950 text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden">
+         <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+         <div className="relative flex flex-col md:flex-row justify-between items-center gap-8">
+            <div className="space-y-2 text-center md:text-left">
+               <h2 className="text-3xl font-black uppercase tracking-tighter">Serialization Gate</h2>
+               <p className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.4em]">Official Institutional Forwarding Node</p>
+            </div>
+            <div className="flex items-center gap-4">
+               <div className="bg-white/5 border border-white/10 px-6 py-3 rounded-2xl">
+                  <span className="text-[8px] font-black text-slate-500 uppercase block mb-1">Clearance Status</span>
+                  <span className={`text-xs font-black uppercase ${forwardingData?.approvalStatus === 'SERIALIZED' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {forwardingData?.approvalStatus || 'NOT DISPATCHED'}
+                  </span>
+               </div>
+               <button onClick={handlePushToHQ} disabled={isSyncing} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl transition-all active:scale-95">
+                 {isSyncing ? 'Syncing...' : 'Dispatch to HQ'}
+               </button>
             </div>
          </div>
-         <div className="p-10">
-            <div className={`grid grid-cols-1 md:grid-cols-2 gap-6`}>
-               {visibleStaff.map(f => {
-                  const p = forwardingData?.facilitatorPayments[f.enrolledId] || { paid: false, particulars: { amount: 0, paidBy: '', sentBy: '', transactionId: '', date: '', isBulk: false, isVerified: false } };
-                  return (
-                     <div key={f.enrolledId} className="flex items-center gap-6 p-8 bg-white border border-gray-100 rounded-[2.5rem] shadow-sm hover:shadow-lg transition-all group">
-                        <div className="flex-1 space-y-1">
-                           <p className="text-sm font-black uppercase text-slate-800">{f.name}</p>
-                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{f.taughtSubject || f.role}</p>
-                        </div>
-                        <div className="flex flex-col items-end gap-2">
-                           <span className={`text-[10px] font-black uppercase px-4 py-1.5 rounded-full ${p.particulars.isVerified ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
-                              {p.particulars.isVerified ? 'VERIFIED' : 'AWAITING HQ'}
-                           </span>
-                           <div className="text-right">
-                              <span className="text-[9px] font-black text-slate-300 uppercase block">TX REF</span>
-                              <span className="text-[10px] font-mono font-black text-blue-600">{p.particulars.transactionId || 'NOT_SYNCED'}</span>
-                           </div>
-                        </div>
-                     </div>
-                  );
-               })}
+      </header>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+         {/* 2. Pupil Partitioning: Language & Payment */}
+         <div className="lg:col-span-8 bg-white border border-gray-100 rounded-[3.5rem] shadow-xl overflow-hidden flex flex-col">
+            <div className="bg-gray-50 px-10 py-6 border-b border-gray-100 flex justify-between items-center">
+               <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Candidate Roster & Partitioning</h3>
+               <span className="text-[9px] font-black text-blue-600 uppercase bg-blue-50 px-3 py-1 rounded-full">{students.length} Nodes</span>
+            </div>
+            <div className="overflow-x-auto">
+               <table className="w-full text-left">
+                  <thead className="bg-slate-900 text-slate-500 text-[8px] font-black uppercase tracking-widest">
+                     <tr>
+                        <th className="px-8 py-5">Identity Shard</th>
+                        <th className="px-6 py-5">Ghanaian Language Selection</th>
+                        <th className="px-6 py-5 text-center">Clearance</th>
+                     </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                     {students.map(s => (
+                        <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                           <td className="px-8 py-5 font-black uppercase text-slate-800 text-xs truncate max-w-[180px]">{s.name}</td>
+                           <td className="px-6 py-5">
+                              <select 
+                                value={s.ghanaianLanguage || ''} 
+                                onChange={e => updatePupilLanguage(s.id, e.target.value)}
+                                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2 text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-500/10"
+                              >
+                                 <option value="">SELECT LANGUAGE...</option>
+                                 {GH_LANGS.map(l => <option key={l} value={l}>{l}</option>)}
+                              </select>
+                           </td>
+                           <td className="px-6 py-5 text-center">
+                              <button 
+                                onClick={() => togglePupilPayment(s.id)}
+                                className={`w-8 h-8 rounded-xl border-2 transition-all flex items-center justify-center mx-auto ${s.paymentStatus === 'PAID' ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg' : 'border-gray-100 hover:border-blue-400 text-transparent'}`}
+                              >
+                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
+                              </button>
+                           </td>
+                        </tr>
+                     ))}
+                  </tbody>
+               </table>
             </div>
          </div>
-      </section>
+
+         {/* 3. Side Panel: Bulk & Faculty */}
+         <div className="lg:col-span-4 space-y-8">
+            {/* Bulk Payment Block */}
+            <div className="bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl space-y-6">
+               <h3 className="text-xs font-black uppercase tracking-widest text-blue-400">Institutional Bulk Clearance</h3>
+               <div className="space-y-4">
+                  <div className="space-y-1">
+                     <label className="text-[8px] font-black text-slate-500 uppercase ml-1">TX Ref / ID</label>
+                     <input type="text" value={bulkPayment.transactionId} onChange={e=>setBulkPayment({...bulkPayment, transactionId: e.target.value.toUpperCase()})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-xs font-mono font-black text-blue-300 outline-none" placeholder="REF-XXXXXXXX" />
+                  </div>
+                  <div className="space-y-1">
+                     <label className="text-[8px] font-black text-slate-500 uppercase ml-1">Aggregate Amount (GHS)</label>
+                     <input type="number" value={bulkPayment.amount} onChange={e=>setBulkPayment({...bulkPayment, amount: parseFloat(e.target.value)||0})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-lg font-black text-white outline-none" placeholder="0.00" />
+                  </div>
+               </div>
+            </div>
+
+            {/* Facilitator Recommendations */}
+            <div className="bg-white border border-gray-100 rounded-[3rem] p-8 shadow-xl space-y-6">
+               <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 border-b border-gray-100 pb-4">Faculty Contract Recommendations</h3>
+               <div className="space-y-4 max-h-[400px] overflow-y-auto no-scrollbar">
+                  {Object.values(facilitators).map(f => {
+                    const rec = forwardingData?.facilitatorRecommendations[f.email];
+                    return (
+                      <div key={f.email} className="bg-slate-50 p-5 rounded-3xl border border-gray-100 space-y-4 group">
+                         <div className="flex justify-between items-start">
+                            <div className="space-y-0.5">
+                               <p className="text-[11px] font-black uppercase text-slate-900">{f.name}</p>
+                               <p className="text-[8px] font-bold text-blue-600 uppercase tracking-widest">{f.taughtSubject}</p>
+                            </div>
+                            {rec && <div className="bg-emerald-500 text-white text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest animate-pulse">REC</div>}
+                         </div>
+                         <div className="flex gap-2">
+                            <button onClick={()=>handleRecommendStaff(f.email, 'EXAMINER')} className={`flex-1 py-2 rounded-xl text-[8px] font-black uppercase transition-all ${rec === 'EXAMINER' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white border border-gray-200 text-slate-400'}`}>Examiner</button>
+                            <button onClick={()=>handleRecommendStaff(f.email, 'INVIGILATOR')} className={`flex-1 py-2 rounded-xl text-[8px] font-black uppercase transition-all ${rec === 'INVIGILATOR' ? 'bg-indigo-900 text-white shadow-lg' : 'bg-white border border-gray-200 text-slate-400'}`}>Invigilator</button>
+                         </div>
+                      </div>
+                    );
+                  })}
+               </div>
+            </div>
+         </div>
+      </div>
     </div>
   );
 };

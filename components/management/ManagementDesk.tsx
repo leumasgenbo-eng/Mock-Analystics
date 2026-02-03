@@ -134,6 +134,8 @@ const ManagementDesk: React.FC<ManagementDeskProps> = ({
             <EnrolmentForwardingPortal 
               settings={settings} 
               students={students} 
+              // Fix: Added missing setStudents prop to satisfy EnrolmentForwardingPortalProps
+              setStudents={setStudents}
               facilitators={facilitators} 
               isFacilitator={isFacilitator}
               activeFacilitator={activeFacilitator}

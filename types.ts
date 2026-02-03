@@ -117,6 +117,7 @@ export interface SchoolRegistryEntry {
   performanceHistory: InstitutionalPerformance[];
   status: 'active' | 'suspended' | 'audit';
   lastActivity: string;
+  serializationStatus?: 'PENDING' | 'SERIALIZED';
   remarkTelemetry?: RemarkTelemetry;
   verificationLogs?: Record<string, VerificationEntry[]>;
   fullData?: {
@@ -136,6 +137,9 @@ export interface StudentData {
   parentEmail?: string; 
   attendance: number;
   conductRemark?: string;
+  ghanaianLanguage?: string;
+  paymentStatus?: 'PAID' | 'UNPAID';
+  indexNumber?: string;
   scores: Record<string, number>;
   sbaScores: Record<string, number>;
   examSubScores: Record<string, ExamSubScore>;
@@ -184,6 +188,8 @@ export interface ProcessedStudent {
   parentEmail?: string;
   attendance: number;
   conductRemark?: string;
+  ghanaianLanguage?: string;
+  indexNumber?: string;
   subjects: ComputedSubject[];
   totalScore: number;
   bestSixAggregate: number;
@@ -302,6 +308,7 @@ export interface MockResource {
   questionUrl?: string;
   schemeUrl?: string;
   generalReport?: string;
+  serializedPacks?: { A: string, B: string, C: string, D: string };
 }
 
 export interface QuestionIndicatorMapping {
@@ -329,17 +336,12 @@ export interface ForwardingData {
   schoolId: string;
   schoolName: string;
   feedback: string;
-  pupilPayments: Record<number, { 
-    paid: boolean; 
-    language: string; 
-    particulars: PaymentParticulars; 
-  }>;
-  facilitatorPayments: Record<string, { 
-    paid: boolean; 
-    particulars: PaymentParticulars; 
-  }>;
+  pupilLanguages: Record<number, string>;
+  pupilPayments: Record<number, boolean>;
+  bulkPayment?: PaymentParticulars;
+  facilitatorRecommendations: Record<string, 'EXAMINER' | 'INVIGILATOR'>;
   submissionTimestamp: string;
-  approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
+  approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SERIALIZED';
 }
 
 export interface StaffRewardTrade {
@@ -362,6 +364,7 @@ export interface SerializedPupil {
   name: string;
   serial: 'A' | 'B' | 'C' | 'D';
   questionCode: string;
+  indexNumber?: string;
 }
 
 export interface SerializationData {
