@@ -39,7 +39,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
     if (!newStaff.name || !newStaff.email) return;
     setIsEnrolling(true);
     try {
-      const hubId = settings.schoolNumber || "SMA-UBA-NODE-2025";
+      const hubId = settings.schoolNumber || "UBA-NODE-2025";
       const staffId = `STAFF-${Math.floor(1000 + Math.random() * 9000)}`;
       const nodeId = `${hubId}/${staffId}`;
       const targetEmail = newStaff.email.toLowerCase().trim();
@@ -73,12 +73,14 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
 
       setFacilitators(prev => ({ ...prev, [targetEmail]: staff }));
       setNewStaff({ name: '', email: '', role: 'FACILITATOR', subject: '', category: 'BASIC_SUBJECT_LEVEL', uniqueCode: '' });
-      alert(`FACULTY SYNC: ${targetName} identity shared with companion app.`);
+      alert(`FACULTY SYNC: ${targetName} identity shared with cloud hub.`);
+      
+      // Persistence handshake
+      setTimeout(onSave, 200);
     } catch (err: any) {
       alert("Enrolment Error: " + err.message);
     } finally {
       setIsEnrolling(false);
-      setTimeout(onSave, 100);
     }
   };
 
@@ -89,6 +91,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       nextInv[index] = { ...nextInv[index], [field]: value };
       return { ...prev, [email]: { ...staff, invigilations: nextInv } };
     });
+    setTimeout(onSave, 200);
   };
 
   const roles: StaffRole[] = ['FACILITATOR', 'INVIGILATOR', 'EXAMINER', 'CHIEF INVIGILATOR', 'CHIEF EXAMINER', 'SUPERVISOR', 'OFFICER'];
@@ -201,6 +204,9 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                             </div>
                          </div>
                        ))}
+                    </div>
+                    <div className="mt-8 flex justify-center no-print">
+                       <button onClick={onSave} className="bg-slate-900 text-white px-10 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">Force Cloud Handshake</button>
                     </div>
                  </div>
                )}

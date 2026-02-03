@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { calculateClassStatistics, processStudentData } from './utils';
 import { GlobalSettings, StudentData, StaffAssignment, SchoolRegistryEntry, ProcessedStudent } from './types';
 import { supabase } from './supabaseClient';
@@ -79,17 +79,21 @@ const App: React.FC = () => {
   const [students, setStudents] = useState<StudentData[]>([]); 
   const [facilitators, setFacilitators] = useState<Record<string, StaffAssignment>>({});
 
+  // Deep Sync Tracker: Ensure handlesaveAll always uses the latest available state shards
+  const stateRef = useRef({ settings, students, facilitators });
+  useEffect(() => {
+    stateRef.current = { settings, students, facilitators };
+  }, [settings, students, facilitators]);
+
   const syncCloudShards = useCallback(async (hubId: string) => {
     if (!hubId) return null;
     setIsSyncing(true);
     try {
-      // 1. PULL COMPLEX PERSISTENCE SHARDS (Rich App State)
       const { data: persistenceData } = await supabase
         .from('uba_persistence')
         .select('id, payload')
         .eq('hub_id', hubId);
       
-      // 2. PULL FLAT PUPIL REGISTRY (Master Roster)
       const { data: pupilRegistry } = await supabase
         .from('uba_pupils')
         .select('*')
@@ -107,17 +111,12 @@ const App: React.FC = () => {
         });
       }
 
-      // 3. DEEP RECONCILIATION: Fix for "The Learner have not been downloaded"
-      // Merge flat pupils into the student working set if they are missing from the persistence shard
       if (pupilRegistry && pupilRegistry.length > 0) {
         const mergedStudents = [...cloudStudents];
-        
         pupilRegistry.forEach(p => {
           const studentId = parseInt(p.student_id);
           const exists = mergedStudents.some(cs => cs.id === studentId);
-          
           if (!exists) {
-            // Forge missing identity shard in local memory
             mergedStudents.push({
               id: studentId,
               name: p.name.toUpperCase(),
@@ -150,7 +149,6 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const initializeSystem = async () => {
-      // Pull global registry for cross-institutional checks
       const { data: regData } = await supabase.from('uba_persistence').select('payload').like('id', 'registry_%');
       if (regData) setGlobalRegistry(regData.flatMap(r => r.payload || []));
 
@@ -198,33 +196,32 @@ const App: React.FC = () => {
   };
 
   const handleSaveAll = async () => {
-    const hubId = settings.schoolNumber || currentHubId;
+    // Critical: Pull latest shards from Ref to avoid stale closure data
+    const { settings: s, students: st, facilitators: f } = stateRef.current;
+    const hubId = s.schoolNumber || currentHubId;
     if (!hubId) return;
     
     // 100% Data Capture: Persist AppState Shards
     await supabase.from('uba_persistence').upsert([
-      { id: `${hubId}_settings`, hub_id: hubId, payload: settings, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email },
-      { id: `${hubId}_students`, hub_id: hubId, payload: students, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email },
-      { id: `${hubId}_facilitators`, hub_id: hubId, payload: facilitators, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email }
+      { id: `${hubId}_settings`, hub_id: hubId, payload: s, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email },
+      { id: `${hubId}_students`, hub_id: hubId, payload: st, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email },
+      { id: `${hubId}_facilitators`, hub_id: hubId, payload: f, last_updated: new Date().toISOString(), updated_by: loggedInUser?.email }
     ]);
 
-    // Log Global Event
     await supabase.from('uba_activity_logs').insert({
         node_id: hubId,
         staff_id: loggedInUser?.email || 'ANONYMOUS',
         action_type: 'GLOBAL_PERSISTENCE_SYNC',
-        context_data: { student_count: students.length, mock_cycle: settings.activeMock }
+        context_data: { student_count: st.length, mock_cycle: s.activeMock }
     });
   };
 
-  // 100% Data Handshake Transition
   const handleLoginTransition = async (hubId: string, user: any) => {
     setIsSyncing(true);
     localStorage.setItem('uba_active_hub_id', hubId);
     localStorage.setItem('uba_active_role', user.role);
     localStorage.setItem('uba_user_context', JSON.stringify(user));
     
-    // Explicitly mirror cloud to browser
     const cloudData = await syncCloudShards(hubId);
     
     setCurrentHubId(hubId);
