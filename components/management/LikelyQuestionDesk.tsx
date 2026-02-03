@@ -55,9 +55,12 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
     setIsSyncing(true);
 
     const facilitatorRecord = (Object.values(facilitators) as StaffAssignment[]).find(f => f.name === targetFacilitatorName);
+    const facilitatorEmail = facilitatorRecord?.email || activeFacilitator?.email || 'admin@unitedbaylor.edu.gh';
+    
+    const questionId = `LQ-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     
     const newQ: MasterQuestion = {
-      id: `LQ-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      id: questionId,
       originalIndex: questions.length + 1,
       ...formData,
       subject: targetSubject,
@@ -68,23 +71,43 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
     };
 
     try {
-      if (facilitatorRecord?.email) {
-          const { data: currentIdent } = await supabase.from('uba_identities').select('merit_balance').eq('email', facilitatorRecord.email).single();
+      // 1. HQ MASTER REGISTRY INSERT (FORMAL RECORD)
+      const { error: bankError } = await supabase.from('uba_question_bank').insert({
+        external_id: questionId,
+        hub_id: settings.schoolNumber,
+        facilitator_email: facilitatorEmail,
+        subject: targetSubject,
+        type: formData.type,
+        blooms_level: formData.blooms,
+        strand: formData.strand,
+        sub_strand: formData.subStrand,
+        indicator_code: formData.indicatorCode,
+        question_text: formData.questionText,
+        correct_key: formData.correctKey,
+        weight: formData.weight,
+        status: 'PENDING'
+      });
+
+      if (bankError) throw bankError;
+
+      // 2. MERIT REWARD LOGIC
+      if (facilitatorEmail) {
+          const { data: currentIdent } = await supabase.from('uba_identities').select('merit_balance').eq('email', facilitatorEmail).single();
           const nextBalance = (currentIdent?.merit_balance || 0) + 5;
-          await supabase.from('uba_identities').update({ merit_balance: nextBalance }).eq('email', facilitatorRecord.email);
+          await supabase.from('uba_identities').update({ merit_balance: nextBalance }).eq('email', facilitatorEmail);
           
           await supabase.from('uba_transaction_ledger').insert({
-              identity_email: facilitatorRecord.email,
+              identity_email: facilitatorEmail,
               hub_id: settings.schoolNumber,
               event_category: 'DATA_UPLOAD',
               type: 'CREDIT',
               asset_type: 'MERIT_TOKEN',
               amount: 5,
               description: `Submission Credit: ${targetSubject} shard.`,
-              reference_ids: [newQ.id]
           });
       }
 
+      // 3. PERSISTENCE SHARD UPDATE
       const nextPersonalQs = [...questions, newQ];
       await supabase.from('uba_persistence').upsert({
          id: `likely_${targetSubject.replace(/\s+/g, '')}_${targetFacilitatorName.replace(/\s+/g, '')}`,
@@ -105,9 +128,9 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
         correctKey: '',
         answerScheme: ''
       });
-      alert(`SHARD CAPTURED: Identity synced with Cloud Registry.`);
-    } catch (error) {
-      alert("Sync Interrupted.");
+      alert(`SHARD CAPTURED: Identity synced with Global HQ Bank.`);
+    } catch (error: any) {
+      alert("Sync Interrupted: " + error.message);
     } finally {
       setIsSyncing(false);
     }
@@ -119,7 +142,7 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/10 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
         <div className="relative space-y-4">
            <h3 className="text-4xl font-black uppercase tracking-tighter leading-none">Likely Questions Desk</h3>
-           <p className="text-blue-400 font-bold text-[10px] uppercase tracking-[0.5em]">Synchronizing Instructional Shards with United Baylor Network</p>
+           <p className="text-blue-400 font-bold text-[10px] uppercase tracking-[0.5em]">Global HQ Shard Registry Portal</p>
         </div>
       </header>
 
@@ -127,14 +150,14 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
          <form onSubmit={handleSubmit} className="lg:col-span-7 bg-white p-10 rounded-[3.5rem] border border-gray-100 shadow-xl space-y-8">
             <div className="grid grid-cols-2 gap-6 bg-slate-50 p-6 rounded-3xl">
                 <div className="space-y-1">
-                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Type</label>
+                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Modality</label>
                    <select value={formData.type} onChange={e=>setFormData({...formData, type: e.target.value as any})} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2 text-[10px] font-black uppercase">
                       <option value="OBJECTIVE">OBJECTIVE</option>
                       <option value="THEORY">THEORY</option>
                    </select>
                 </div>
                 <div className="space-y-1">
-                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Bloom's Scale</label>
+                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Cognitive Scale</label>
                    <select value={formData.blooms} onChange={e=>setFormData({...formData, blooms: e.target.value as any})} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2 text-[10px] font-black uppercase">
                       {BLOOMS.map(b => <option key={b} value={b}>{b}</option>)}
                    </select>
@@ -145,40 +168,40 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
                <div className="space-y-4">
                   <div className="flex gap-2">
                      <input type="text" placeholder="S-CODE" value={formData.strandCode} onChange={e=>setFormData({...formData, strandCode: e.target.value.toUpperCase()})} className="w-20 bg-slate-50 border border-gray-100 rounded-xl px-4 py-3 text-[10px] font-black uppercase" />
-                     <input type="text" placeholder="STRAND NAME" value={formData.strand} onChange={e=>setFormData({...formData, strand: e.target.value.toUpperCase()})} className="flex-1 bg-slate-50 border border-gray-100 rounded-xl px-4 py-3 text-[10px] font-black uppercase" />
+                     <input type="text" placeholder="STRAND" value={formData.strand} onChange={e=>setFormData({...formData, strand: e.target.value.toUpperCase()})} className="flex-1 bg-slate-50 border border-gray-100 rounded-xl px-4 py-3 text-[10px] font-black uppercase" />
                   </div>
                   <div className="flex gap-2">
                      <input type="text" placeholder="SS-CODE" value={formData.subStrandCode} onChange={e=>setFormData({...formData, subStrandCode: e.target.value.toUpperCase()})} className="w-20 bg-slate-50 border border-gray-100 rounded-xl px-4 py-3 text-[10px] font-black uppercase" />
-                     <input type="text" placeholder="SUB-STRAND NAME" value={formData.subStrand} onChange={e=>setFormData({...formData, subStrand: e.target.value.toUpperCase()})} className="flex-1 bg-slate-50 border border-gray-100 rounded-xl px-4 py-3 text-[10px] font-black uppercase" />
+                     <input type="text" placeholder="SUB-STRAND" value={formData.subStrand} onChange={e=>setFormData({...formData, subStrand: e.target.value.toUpperCase()})} className="flex-1 bg-slate-50 border border-gray-100 rounded-xl px-4 py-3 text-[10px] font-black uppercase" />
                   </div>
                   <div className="flex gap-2">
                      <input type="text" placeholder="I-CODE" value={formData.indicatorCode} onChange={e=>setFormData({...formData, indicatorCode: e.target.value.toUpperCase()})} className="w-20 bg-slate-50 border border-gray-100 rounded-xl px-4 py-3 text-[10px] font-black uppercase" />
-                     <input type="text" placeholder="INDICATOR NAME" value={formData.indicator} onChange={e=>setFormData({...formData, indicator: e.target.value.toUpperCase()})} className="flex-1 bg-slate-50 border border-gray-100 rounded-xl px-4 py-3 text-[10px] font-black uppercase" />
+                     <input type="text" placeholder="INDICATOR" value={formData.indicator} onChange={e=>setFormData({...formData, indicator: e.target.value.toUpperCase()})} className="flex-1 bg-slate-50 border border-gray-100 rounded-xl px-4 py-3 text-[10px] font-black uppercase" />
                   </div>
                </div>
                <div className="space-y-4">
-                  <textarea value={formData.instruction} onChange={e=>setFormData({...formData, instruction: e.target.value})} className="w-full bg-slate-50 border border-gray-100 rounded-xl p-4 text-[10px] font-bold text-blue-600 h-full min-h-[140px] uppercase" placeholder="INSTRUCTIONS TO CANDIDATE / DIAGRAM NOTE..." />
+                  <textarea value={formData.instruction} onChange={e=>setFormData({...formData, instruction: e.target.value})} className="w-full bg-slate-50 border border-gray-100 rounded-xl p-4 text-[10px] font-bold text-blue-600 h-full min-h-[140px] uppercase" placeholder="ADMINISTRATIVE INSTRUCTIONS..." />
                </div>
             </div>
 
             <div className="space-y-1">
-               <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Question Content</label>
+               <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Cognitive Content</label>
                <textarea value={formData.questionText} onChange={e=>setFormData({...formData, questionText: e.target.value})} className="w-full bg-slate-50 border border-gray-100 rounded-2xl p-6 text-sm font-bold text-slate-700 min-h-[120px] uppercase focus:ring-8 focus:ring-blue-500/5 outline-none transition-all" required placeholder="ENTER QUESTION CONTENT..." />
             </div>
 
             <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-1">
-                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Key / Answer / Rubric</label>
-                   <input value={formData.correctKey} onChange={e=>setFormData({...formData, correctKey: e.target.value.toUpperCase()})} className="w-full bg-slate-50 border border-gray-100 rounded-xl px-5 py-4 text-xs font-black uppercase" required placeholder="A / B / C / ANSWER TEXT..." />
+                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Verification Key / Rubric</label>
+                   <input value={formData.correctKey} onChange={e=>setFormData({...formData, correctKey: e.target.value.toUpperCase()})} className="w-full bg-slate-50 border border-gray-100 rounded-xl px-5 py-4 text-xs font-black uppercase" required placeholder="A / B / C / RESULT..." />
                 </div>
                 <div className="space-y-1">
-                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Diagram URL (Optional)</label>
-                   <input type="text" value={formData.diagramUrl} onChange={e=>setFormData({...formData, diagramUrl: e.target.value})} className="w-full bg-slate-50 border border-gray-100 rounded-xl px-5 py-4 text-xs font-mono font-black" placeholder="HTTPS://..." />
+                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2">Illustration Shard URL</label>
+                   <input type="text" value={formData.diagramUrl} onChange={e=>setFormData({...formData, diagramUrl: e.target.value})} className="w-full bg-slate-50 border border-gray-100 rounded-xl px-5 py-4 text-xs font-mono font-black" placeholder="HTTPS://DATA.CLOUD/IMAGE" />
                 </div>
             </div>
 
             <button type="submit" disabled={isSyncing} className="w-full bg-blue-950 text-white py-6 rounded-3xl font-black text-[11px] uppercase tracking-[0.3em] shadow-2xl transition-all active:scale-95 disabled:opacity-50">
-               {isSyncing ? 'Handshaking Cloud Registry...' : 'Mirror Shard to Global Bank'}
+               {isSyncing ? 'Linking HQ Shard Bank...' : 'Submit to HQ Master Registry'}
             </button>
          </form>
 
@@ -195,7 +218,7 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
                            <span className="text-[7px] font-black text-blue-400 uppercase tracking-widest">{q.indicatorCode} • {q.indicator}</span>
                            <p className="text-[11px] font-bold text-slate-300 uppercase leading-relaxed line-clamp-3">"{q.questionText}"</p>
                         </div>
-                        <div className="bg-slate-900 px-2 py-1 rounded text-[8px] font-black text-slate-500">{q.blooms}</div>
+                        <div className="bg-blue-600 text-white px-2 py-0.5 rounded text-[7px] font-black uppercase">SYNCED</div>
                      </div>
                   </div>
                )) : (

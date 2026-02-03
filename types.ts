@@ -140,6 +140,7 @@ export interface StudentData {
   ghanaianLanguage?: string;
   paymentStatus?: 'PAID' | 'UNPAID';
   indexNumber?: string;
+  uniqueCode?: string; // Added for 6-digit PIN storage
   scores: Record<string, number>;
   sbaScores: Record<string, number>;
   examSubScores: Record<string, ExamSubScore>;
@@ -190,6 +191,7 @@ export interface ProcessedStudent {
   conductRemark?: string;
   ghanaianLanguage?: string;
   indexNumber?: string;
+  uniqueCode?: string;
   subjects: ComputedSubject[];
   totalScore: number;
   bestSixAggregate: number;

@@ -1,54 +1,79 @@
 
 -- ==========================================================
--- UNITED BAYLOR ACADEMY: UNIFIED DATA HUB v9.5.2 (Global Node Sync)
--- ==========================================================
--- PURPOSE: 100% Data Capture for Assessment, Financials, and Ops.
--- INTEGRATION: Cross-Platform Handshake between Assessment & Companion App.
+-- UNITED BAYLOR ACADEMY: UNIFIED DATA HUB v9.5.6 (Master Registry Sync)
 -- ==========================================================
 
--- 1. IDENTITY HUB: Primary Authentication & Node Balance Cache
+-- 1. IDENTITY HUB: Primary Authentication Registry
 CREATE TABLE IF NOT EXISTS public.uba_identities (
     email TEXT PRIMARY KEY,
     full_name TEXT NOT NULL,
-    node_id TEXT NOT NULL,         -- The Institutional Shard ID
-    hub_id TEXT NOT NULL,          -- Regional Controller ID (SMA-HQ)
+    node_id TEXT NOT NULL,         
+    hub_id TEXT NOT NULL,          
     role TEXT NOT NULL,            -- super_admin, school_admin, facilitator, pupil
-    teaching_category TEXT DEFAULT 'BASIC_SUBJECT_LEVEL', 
-    unique_code TEXT UNIQUE,       -- Secure PIN for Gateway Access
-    phone_number TEXT,             
-    node_metadata JSONB DEFAULT '{}'::jsonb, -- Captures Device Fingerprints/Preferences
-    merit_balance DOUBLE PRECISION DEFAULT 0,    -- Question Credits
-    monetary_balance DOUBLE PRECISION DEFAULT 0, -- GHS Vault Value
-    last_synced_at TIMESTAMPTZ DEFAULT NOW(),
+    unique_code TEXT UNIQUE,       
+    merit_balance DOUBLE PRECISION DEFAULT 0 NOT NULL,
+    monetary_balance DOUBLE PRECISION DEFAULT 0 NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. PUPIL REGISTRY: Institutional Roster Matrix
+-- 2. FACILITATOR REGISTRY: Detailed Staff Records
+CREATE TABLE IF NOT EXISTS public.uba_facilitators (
+    email TEXT PRIMARY KEY REFERENCES public.uba_identities(email) ON DELETE CASCADE,
+    full_name TEXT NOT NULL,
+    hub_id TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    taught_subject TEXT,
+    teaching_category TEXT DEFAULT 'BASIC_SUBJECT_LEVEL',
+    unique_code TEXT,
+    merit_balance DOUBLE PRECISION DEFAULT 0 NOT NULL,
+    monetary_balance DOUBLE PRECISION DEFAULT 0 NOT NULL,
+    invigilation_data JSONB DEFAULT '[]'::jsonb,
+    last_active TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. QUESTION REGISTRY: Global HQ Master Bank (NEW)
+CREATE TABLE IF NOT EXISTS public.uba_question_bank (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    external_id TEXT UNIQUE,        -- Facilitator-side ID (LQ-XXX)
+    hub_id TEXT NOT NULL,           -- Origin School
+    facilitator_email TEXT NOT NULL REFERENCES public.uba_identities(email),
+    subject TEXT NOT NULL,
+    type TEXT CHECK (type IN ('OBJECTIVE', 'THEORY')),
+    blooms_level TEXT NOT NULL,     -- Knowledge, Application, etc.
+    strand TEXT,
+    sub_strand TEXT,
+    indicator_code TEXT,
+    question_text TEXT NOT NULL,
+    correct_key TEXT,               -- Key for OBJ or Rubric Summary for Theory
+    weight INTEGER DEFAULT 1,
+    status TEXT DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'VERIFIED', 'REJECTED')),
+    usage_count INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. PUPIL REGISTRY: Institutional Roster Matrix
 CREATE TABLE IF NOT EXISTS public.uba_pupils (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    student_id TEXT UNIQUE,        -- Primary Relational Key
+    student_id TEXT UNIQUE,        -- Format: [INITIALS][YEAR][NUMBER]
     name TEXT NOT NULL,
     gender TEXT CHECK (gender IN ('M', 'F', 'Other')),
-    class_name TEXT NOT NULL,      -- e.g. 'Basic 9'
+    class_name TEXT NOT NULL DEFAULT 'BASIC 9',
     hub_id TEXT NOT NULL,          
-    is_jhs_level BOOLEAN DEFAULT FALSE, 
+    is_jhs_level BOOLEAN DEFAULT TRUE, 
     enrollment_status TEXT DEFAULT 'ACTIVE',
-    performance_category TEXT,      
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. PERSISTENCE HUB: Global AppState Sharding
+-- 5. PERSISTENCE HUB: Global AppState Sharding
 CREATE TABLE IF NOT EXISTS public.uba_persistence (
     id TEXT PRIMARY KEY,           
     hub_id TEXT NOT NULL,                
-    payload JSONB NOT NULL,        -- Full AppState Object
-    checksum TEXT,                 
-    version_tag TEXT DEFAULT 'v9.5.2',
-    last_updated TIMESTAMPTZ DEFAULT NOW(),
-    updated_by TEXT                
+    payload JSONB NOT NULL,        
+    version_tag TEXT DEFAULT 'v9.5.6',
+    last_updated TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. ACTIVITY LEDGER: Institutional Audit Trail
+-- 6. ACTIVITY LEDGER: Institutional Audit Trail
 CREATE TABLE IF NOT EXISTS public.uba_activity_logs (
     id BIGSERIAL PRIMARY KEY,
     node_id TEXT NOT NULL,
@@ -58,61 +83,29 @@ CREATE TABLE IF NOT EXISTS public.uba_activity_logs (
     timestamp TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. TRANSACTION LEDGER: Financial Data Capture
+-- 7. TRANSACTION LEDGER: Financial Data Capture
 CREATE TABLE IF NOT EXISTS public.uba_transaction_ledger (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     identity_email TEXT NOT NULL,
     hub_id TEXT NOT NULL,
-    event_category TEXT CHECK (event_category IN ('DATA_UPLOAD', 'DATA_DOWNLOAD', 'TRADE_EXCHANGE', 'ROYALTY_CREDIT')),
+    event_category TEXT NOT NULL, 
     type TEXT CHECK (type IN ('CREDIT', 'DEBIT')),
-    asset_type TEXT CHECK (asset_type IN ('MERIT_TOKEN', 'MONETARY_GHS')),
+    asset_type TEXT NOT NULL,     
     amount DOUBLE PRECISION NOT NULL,
     description TEXT,
-    reference_ids TEXT[], 
-    metadata JSONB, 
     timestamp TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. MESSAGING HUB: Internal Node Communications
-CREATE TABLE IF NOT EXISTS public.uba_messages (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    from_node TEXT NOT NULL,
-    to_node TEXT NOT NULL,
-    message_body TEXT NOT NULL,
-    is_read BOOLEAN DEFAULT FALSE,
-    dispatch_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- ==========================================================
--- MASTER SEEDING: CORE NETWORK ACCESS KEYS
--- ==========================================================
-
--- GLOBAL MASTER ACCESS (SUPERADMIN)
-INSERT INTO public.uba_identities (email, full_name, node_id, hub_id, role, teaching_category, unique_code)
-VALUES ('hq@unitedbaylor.edu', 'HQ CONTROLLER', 'MASTER-NODE-01', 'SMA-HQ', 'super_admin', 'ADMINISTRATOR', 'UBA-HQ-MASTER-2025')
-ON CONFLICT (email) DO UPDATE SET 
-    teaching_category = EXCLUDED.teaching_category,
-    unique_code = EXCLUDED.unique_code;
-
--- UNITED BAYLOR ACADEMY PRIMARY ADMIN
-INSERT INTO public.uba_identities (email, full_name, node_id, hub_id, role, teaching_category, unique_code)
-VALUES ('admin@unitedbaylor.edu.gh', 'UNITED BAYLOR ADMIN', 'UB-MASTER-001', 'SMA-HQ', 'school_admin', 'ADMINISTRATOR', 'UBA-MASTER-2025')
-ON CONFLICT (email) DO UPDATE SET 
-    unique_code = EXCLUDED.unique_code;
-
--- ==========================================================
--- SECURITY & PERFORMANCE OVERRIDES
--- ==========================================================
+-- SECURITY OVERRIDES
 ALTER TABLE public.uba_identities DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.uba_facilitators DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.uba_question_bank DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uba_pupils DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uba_persistence DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uba_activity_logs DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uba_transaction_ledger DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.uba_messages DISABLE ROW LEVEL SECURITY;
 
--- OPTIMIZATION INDICES
-CREATE INDEX IF NOT EXISTS idx_uba_pupils_hub ON public.uba_pupils(hub_id);
-CREATE INDEX IF NOT EXISTS idx_identities_node ON public.uba_identities(node_id);
-CREATE INDEX IF NOT EXISTS idx_persistence_hub ON public.uba_persistence(hub_id);
-CREATE INDEX IF NOT EXISTS idx_ledger_email_ts ON public.uba_transaction_ledger(identity_email, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON public.uba_activity_logs(timestamp DESC);
+-- INDEXING
+CREATE INDEX IF NOT EXISTS idx_qb_subject ON public.uba_question_bank(subject);
+CREATE INDEX IF NOT EXISTS idx_qb_hub ON public.uba_question_bank(hub_id);
+CREATE INDEX IF NOT EXISTS idx_qb_fac ON public.uba_question_bank(facilitator_email);

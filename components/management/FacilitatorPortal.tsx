@@ -21,15 +21,15 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
   });
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [expandedStaff, setExpandedStaff] = useState<string | null>(null);
-  const [identities, setIdentities] = useState<any[]>([]);
+  const [dbFacilitators, setDbFacilitators] = useState<any[]>([]);
 
   useEffect(() => {
-     const fetchIdentities = async () => {
+     const fetchDbFacs = async () => {
         if (!settings.schoolNumber) return;
-        const { data } = await supabase.from('uba_identities').select('*').eq('hub_id', settings.schoolNumber);
-        if (data) setIdentities(data);
+        const { data } = await supabase.from('uba_facilitators').select('*').eq('hub_id', settings.schoolNumber);
+        if (data) setDbFacilitators(data);
      };
-     fetchIdentities();
+     fetchDbFacs();
   }, [settings.schoolNumber, facilitators]);
 
   const createEmptyRegister = (): InvigilationSlot[] => 
@@ -42,36 +42,43 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
     setIsEnrolling(true);
     try {
       const hubId = settings.schoolNumber;
-      if (!hubId) throw new Error("Institutional Handshake required. Register the school first.");
+      if (!hubId) throw new Error("Institutional Node required. Register school first.");
 
-      const staffId = `STAFF-${Math.floor(1000 + Math.random() * 9000)}`;
-      const nodeId = `${hubId}/${staffId}`;
+      const staffIdSequence = `STAFF-${Math.floor(1000 + Math.random() * 9000)}`;
+      const nodeId = `${hubId}/${staffIdSequence}`;
       const targetEmail = newStaff.email.toLowerCase().trim();
       const targetName = newStaff.name.toUpperCase().trim();
-      const uniqueCode = newStaff.uniqueCode || `FAC-${Math.floor(100 + Math.random() * 899)}`;
+      const uniqueCode = newStaff.uniqueCode || `UBA-${Math.floor(100 + Math.random() * 899)}`;
 
-      // 1. REGISTER TO IDENTITY HUB (AUTHENTICATION REGISTRY)
+      // 1. HARD HANDSHAKE: IDENTITY HUB (AUTHENTICATION)
       const { error: idError } = await supabase.from('uba_identities').upsert({
         email: targetEmail,
         full_name: targetName,
         node_id: nodeId, 
         hub_id: hubId,   
-        role: newStaff.role.toLowerCase() === 'school_admin' ? 'school_admin' : 'facilitator',
+        role: newStaff.role.toLowerCase().includes('admin') ? 'school_admin' : 'facilitator',
+        unique_code: uniqueCode
+      });
+
+      if (idError) throw new Error(`Identity Shard Refused: ${idError.message}`);
+
+      // 2. HARD HANDSHAKE: FACILITATOR REGISTRY (META & ASSETS)
+      const { error: facError } = await supabase.from('uba_facilitators').upsert({
+        email: targetEmail,
+        full_name: targetName,
+        hub_id: hubId,
+        node_id: nodeId,
+        taught_subject: newStaff.subject,
         teaching_category: newStaff.category,
         unique_code: uniqueCode,
         merit_balance: 0,
         monetary_balance: 0,
-        node_metadata: {
-           enrolled_at: new Date().toISOString(),
-           system_v: "9.5.3"
-        }
+        invigilation_data: []
       });
 
-      if (idError) {
-        console.warn("[IDENTITY SHARD CACHE WARNING]", idError.message);
-        // We do not stop here if the persistence shard can still be saved
-      }
+      if (facError) throw new Error(`Registry Shard Refused: ${facError.message}`);
 
+      // 3. UI STATE SYNC
       const staff: StaffAssignment = {
         name: targetName,
         email: targetEmail,
@@ -85,17 +92,16 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         marking: { dateTaken: '', dateReturned: '', inProgress: false }
       };
 
-      // 2. UPDATE BROWSER STATE
       const nextFacilitators = { ...facilitators, [targetEmail]: staff };
       setFacilitators(nextFacilitators);
       
-      // 3. FORCE PERSISTENCE MIRROR (DATA LOSS PROTECTION)
+      // 4. PERSISTENCE LAYER SYNC (DUAL MIRROR)
       await onSave({ facilitators: nextFacilitators });
       
       setNewStaff({ name: '', email: '', role: 'FACILITATOR', subject: '', category: 'BASIC_SUBJECT_LEVEL', uniqueCode: '' });
-      alert(`CLOUD MIRROR SUCCESSFUL: ${targetName} registered to Academy Hub.`);
+      alert(`FACULTY NODE ACTIVATED: ${targetName} is registered and cleared for login.`);
     } catch (err: any) {
-      alert("Enrolment Error: " + (err.message || "Institutional handshake error."));
+      alert(`ENROLLMENT FAULT: ${err.message}`);
     } finally {
       setIsEnrolling(false);
     }
@@ -120,8 +126,8 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
          <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/5 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
          <div className="relative flex flex-col md:flex-row justify-between items-start gap-8">
             <div className="space-y-2">
-               <h2 className="text-3xl font-black uppercase tracking-tighter">Faculty Registry Node</h2>
-               <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Hub ID: {settings.schoolNumber || "UNSYNCED"}</p>
+               <h2 className="text-3xl font-black uppercase tracking-tighter">Facilitator Registry</h2>
+               <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Institutional Hub Node: {settings.schoolNumber || "OFFLINE"}</p>
             </div>
          </div>
 
@@ -130,7 +136,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <input type="text" value={newStaff.name} onChange={e=>setNewStaff({...newStaff, name: e.target.value})} className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="LEGAL IDENTITY..." required />
                 <input type="email" value={newStaff.email} onChange={e=>setNewStaff({...newStaff, email: e.target.value})} className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="OFFICIAL@EMAIL.COM" required />
-                <input type="text" value={newStaff.uniqueCode} onChange={e=>setNewStaff({...newStaff, uniqueCode: e.target.value.toUpperCase()})} className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black outline-none font-mono" placeholder="PIN/CODE" />
+                <input type="text" value={newStaff.uniqueCode} onChange={e=>setNewStaff({...newStaff, uniqueCode: e.target.value.toUpperCase()})} className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black outline-none font-mono" placeholder="ACCESS PIN (OPTIONAL)" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <select value={newStaff.role} onChange={e=>setNewStaff({...newStaff, role: e.target.value as StaffRole})} className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black uppercase outline-none">
@@ -142,13 +148,13 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                    <option value="ADMINISTRATOR" className="text-slate-900">ADMINISTRATIVE</option>
                 </select>
                 <select value={newStaff.subject} onChange={e=>setNewStaff({...newStaff, subject: e.target.value})} className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black uppercase outline-none">
-                   <option value="" className="text-slate-900">SUBJECT SHARD...</option>
+                   <option value="" className="text-slate-900">ASSIGN SUBJECT...</option>
                    {subjects.map(s => <option key={s} value={s}>{s.toUpperCase()}</option>)}
                 </select>
               </div>
               <div className="flex justify-end">
                 <button type="submit" disabled={isEnrolling} className="bg-blue-600 hover:bg-blue-500 text-white px-12 py-4 rounded-2xl font-black text-[10px] uppercase shadow-lg transition-all active:scale-95">
-                  {isEnrolling ? "CONNECTING..." : "Enroll Shard"}
+                  {isEnrolling ? "SYNCING..." : "Enroll Facilitator"}
                 </button>
               </div>
            </form>
@@ -158,7 +164,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       <div className="grid grid-cols-1 gap-8">
         {(Object.values(facilitators) as StaffAssignment[]).map((f) => {
           const isExpanded = expandedStaff === f.email;
-          const identity = identities.find(i => i.email === f.email);
+          const dbData = dbFacilitators.find(d => d.email === f.email);
           
           return (
             <div key={f.email} className="bg-white rounded-[3rem] border border-gray-100 shadow-xl overflow-hidden group hover:shadow-2xl transition-all">
@@ -173,61 +179,29 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                            <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-emerald-50 text-emerald-600`}>{f.teachingCategory || 'BASIC 9'}</span>
                         </div>
                         <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                           <span className="text-blue-600">{f.taughtSubject || 'GENERIC'}</span>
+                           <span className="text-blue-600">{f.taughtSubject || 'GENERAL'}</span>
                            <span className="w-1 h-1 bg-gray-200 rounded-full"></span>
-                           <span className="font-mono text-[9px] text-indigo-600">NODE ID: {f.enrolledId?.split('/')[1] || '---'}</span>
+                           <span className="font-mono text-[9px] text-indigo-600">ID: {f.enrolledId?.split('/')[1] || '---'}</span>
                         </div>
                      </div>
                   </div>
                   
                   <div className="bg-slate-50 px-6 py-4 rounded-3xl border border-gray-100 flex items-center gap-6 shadow-inner">
                      <div className="text-center">
-                        <span className="text-[7px] font-black text-gray-400 uppercase block">Q-Balance</span>
-                        <p className="text-sm font-black text-blue-900 font-mono">{identity?.merit_balance || 0}</p>
+                        <span className="text-[7px] font-black text-gray-400 uppercase block">Merit</span>
+                        <p className="text-sm font-black text-blue-900 font-mono">{dbData?.merit_balance || 0}</p>
                      </div>
                      <div className="w-px h-6 bg-gray-200"></div>
                      <div className="text-center">
-                        <span className="text-[7px] font-black text-gray-400 uppercase block">Vault (GHS)</span>
-                        <p className="text-sm font-black text-emerald-600 font-mono">{identity?.monetary_balance?.toFixed(2) || '0.00'}</p>
+                        <span className="text-[7px] font-black text-gray-400 uppercase block">GHS Vault</span>
+                        <p className="text-sm font-black text-emerald-600 font-mono">{dbData?.monetary_balance?.toFixed(2) || '0.00'}</p>
                      </div>
                   </div>
 
-                  <div className="flex flex-wrap justify-end gap-3">
-                     <button onClick={() => setExpandedStaff(isExpanded ? null : f.email)} className={`px-6 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all ${isExpanded ? 'bg-blue-900 text-white shadow-lg' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
-                        {isExpanded ? 'Close Node' : 'Audit Node'}
-                     </button>
-                  </div>
+                  <button onClick={() => setExpandedStaff(isExpanded ? null : f.email)} className={`px-6 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all ${isExpanded ? 'bg-blue-900 text-white shadow-lg' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
+                     {isExpanded ? 'Hide Node' : 'Audit Node'}
+                  </button>
                </div>
-               {isExpanded && (
-                 <div className="bg-slate-50 p-10 border-t border-gray-100 animate-in slide-in-from-top-4 duration-300">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                       {f.invigilations.map((slot, idx) => (
-                         <div key={idx} className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm space-y-4 hover:border-blue-300 transition-colors">
-                            <div className="flex justify-between items-center">
-                               <span className="w-6 h-6 bg-slate-100 rounded-lg flex items-center justify-center font-black text-[10px] text-slate-400">{idx + 1}.</span>
-                               <span className="text-[8px] font-black text-gray-300 uppercase tracking-widest">Duty Slot</span>
-                            </div>
-                            <div className="space-y-3">
-                               <div className="flex flex-col gap-1">
-                                  <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Duty Date</label>
-                                  <input type="date" value={slot.dutyDate} onChange={e => updateInvigilation(f.email, idx, 'dutyDate', e.target.value)} className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
-                               </div>
-                               <div className="flex flex-col gap-1">
-                                  <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Assigned Discipline</label>
-                                  <select value={slot.subject} onChange={e => updateInvigilation(f.email, idx, 'subject', e.target.value)} className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 text-[10px] font-black outline-none focus:ring-2 focus:ring-blue-500/20 uppercase">
-                                     <option value="">SELECT...</option>
-                                     {subjects.map(s => <option key={s} value={s}>{s}</option>)}
-                                  </select>
-                               </div>
-                            </div>
-                         </div>
-                       ))}
-                    </div>
-                    <div className="mt-8 flex justify-center no-print">
-                       <button onClick={() => onSave()} className="bg-slate-900 text-white px-10 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">Force Cloud Refresh</button>
-                    </div>
-                 </div>
-               )}
             </div>
           );
         })}

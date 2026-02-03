@@ -69,12 +69,8 @@ const App: React.FC = () => {
   const [currentHubId, setCurrentHubId] = useState<string | null>(localStorage.getItem('uba_active_hub_id'));
   const [activeRole, setActiveRole] = useState<string | null>(localStorage.getItem('uba_active_role'));
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [activePupil, setActivePupil] = useState<ProcessedStudent | null>(null);
-  const [activeFacilitator, setActiveFacilitator] = useState<{ name: string; subject: string; email?: string } | null>(null);
-  const [isRegistering, setIsRegistering] = useState(false);
   
   const [loggedInUser, setLoggedInUser] = useState<{ name: string; nodeId: string; role: string; email?: string; subject?: string } | null>(null);
-  const [globalRegistry, setGlobalRegistry] = useState<SchoolRegistryEntry[]>([]);
   const [settings, setSettings] = useState<GlobalSettings>(DEFAULT_SETTINGS);
   const [students, setStudents] = useState<StudentData[]>([]); 
   const [facilitators, setFacilitators] = useState<Record<string, StaffAssignment>>({});
@@ -85,9 +81,8 @@ const App: React.FC = () => {
   }, [settings, students, facilitators]);
 
   /**
-   * TRANSACTIONAL SAVE PROTOCOL (ANTI-DATA-LOSS)
-   * 1. Save to Local Safety Shard
-   * 2. Push to Supabase Cloud Persistence
+   * EMERGENCY BLACK-BOX PERSISTENCE
+   * Ensures 0% data loss by mirroring to local hardware before network dispatch.
    */
   const handleSaveAll = async (overrides?: { settings?: GlobalSettings, students?: StudentData[], facilitators?: Record<string, StaffAssignment> }) => {
     const activeSettings = overrides?.settings || stateRef.current.settings;
@@ -97,7 +92,7 @@ const App: React.FC = () => {
     const hubId = activeSettings.schoolNumber || currentHubId;
     if (!hubId) return;
 
-    // STEP 1: LOCAL SAFETY MIRROR (IMMEDIATE)
+    // MIRROR 1: LOCAL HARDWARE (IMMEDIATE)
     localStorage.setItem(`uba_safety_shard_${hubId}`, JSON.stringify({
       settings: activeSettings,
       students: activeStudents,
@@ -106,6 +101,7 @@ const App: React.FC = () => {
     }));
     
     try {
+      // MIRROR 2: CLOUD HUB (ASYNC)
       const timestamp = new Date().toISOString();
       const updates = [
         { id: `${hubId}_settings`, hub_id: hubId, payload: activeSettings, last_updated: timestamp },
@@ -116,14 +112,15 @@ const App: React.FC = () => {
       const { error } = await supabase.from('uba_persistence').upsert(updates);
       if (error) throw error;
 
+      // AUDIT LOG (RESTORED)
       await supabase.from('uba_activity_logs').insert({
           node_id: hubId,
           staff_id: loggedInUser?.email || 'SYSTEM_AUTO',
-          action_type: 'HUB_DATA_SYNC',
-          context_data: { type: 'FULL_STATE_PERSISTENCE', status: 'SUCCESS' }
+          action_type: 'GLOBAL_PERSISTENCE_SYNC',
+          context_data: { status: 'COMMITTED', version: 'v9.5.4' }
       });
     } catch (e) {
-      console.error("[CLOUD SYNC INTERRUPTED - LOCAL SHARD PRESERVED]", e);
+      console.warn("[CLOUD MIRROR FAILED - LOCAL SHARD PRESERVED]", e);
     }
   };
 
@@ -136,36 +133,36 @@ const App: React.FC = () => {
         .select('id, payload')
         .eq('hub_id', hubId);
       
-      let cloudSettings = { ...DEFAULT_SETTINGS };
-      let cloudStudents: StudentData[] = [];
-      let cloudFacilitators: Record<string, StaffAssignment> = {};
+      let finalSettings = { ...DEFAULT_SETTINGS };
+      let finalStudents: StudentData[] = [];
+      let finalFacilitators: Record<string, StaffAssignment> = {};
 
       if (persistenceData && persistenceData.length > 0) {
         persistenceData.forEach(row => {
-          if (row.id === `${hubId}_settings`) cloudSettings = row.payload;
-          if (row.id === `${hubId}_students`) cloudStudents = row.payload;
-          if (row.id === `${hubId}_facilitators`) cloudFacilitators = row.payload;
+          if (row.id === `${hubId}_settings`) finalSettings = row.payload;
+          if (row.id === `${hubId}_students`) finalStudents = row.payload;
+          if (row.id === `${hubId}_facilitators`) finalFacilitators = row.payload;
         });
       } else {
-        // AUTO-RECOVERY FROM SAFETY SHARD
+        // FALLBACK: RESURRECT FROM SAFETY SHARD
         const safety = localStorage.getItem(`uba_safety_shard_${hubId}`);
         if (safety) {
            const parsed = JSON.parse(safety);
-           cloudSettings = parsed.settings;
-           cloudStudents = parsed.students;
-           cloudFacilitators = parsed.facilitators;
-           console.log("[DATA RECOVERY] Session restored from Local Safety Shard.");
+           finalSettings = parsed.settings;
+           finalStudents = parsed.students;
+           finalFacilitators = parsed.facilitators;
+           console.log("[RECOVERY] System resurrected from Local Black-Box Shard.");
         }
       }
 
-      setSettings(cloudSettings);
-      setStudents(cloudStudents);
-      setFacilitators(cloudFacilitators);
+      setSettings(finalSettings);
+      setStudents(finalStudents);
+      setFacilitators(finalFacilitators);
       
       setIsSyncing(false);
-      return { settings: cloudSettings, students: cloudStudents, facilitators: cloudFacilitators };
+      return { settings: finalSettings, students: finalStudents, facilitators: finalFacilitators };
     } catch (e) { 
-      console.error("[CLOUD RECONCILIATION FAULT]", e); 
+      console.error("[SHARD SYNC ERROR]", e); 
       setIsSyncing(false);
     }
     return null;
@@ -215,9 +212,6 @@ const App: React.FC = () => {
     setCurrentHubId(hubId);
     setActiveRole(user.role);
     setLoggedInUser(user);
-    if (user.role === 'facilitator') {
-      setActiveFacilitator({ name: user.name, subject: user.subject || "GENERAL", email: user.email });
-    }
   };
 
   if (isInitializing || isSyncing) return (
@@ -227,21 +221,13 @@ const App: React.FC = () => {
          <div className="absolute inset-0 w-32 h-32 border-8 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
          <div className="absolute inset-8 w-16 h-16 border-4 border-indigo-400 border-b-transparent rounded-full animate-[spin_2s_linear_infinite_reverse]"></div>
       </div>
-      <div className="text-center space-y-6">
-        <p className="text-2xl font-black text-white uppercase tracking-[0.6em] leading-none animate-pulse">
-          {isSyncing ? "Syncing Academy Node" : "Accessing Hub Shards"}
-        </p>
-      </div>
+      <p className="text-2xl font-black text-white uppercase tracking-[0.6em] animate-pulse">Syncing Academy Node</p>
     </div>
   );
 
   if (!currentHubId && !isSuperAdmin) return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-      {isRegistering ? (
-        <SchoolRegistrationPortal settings={settings} onBulkUpdate={(u)=>setSettings(p=>({...p,...u}))} onSave={handleSaveAll} onComplete={(hubId)=>{ handleLoginTransition(hubId, {role:'school_admin'}); }} onResetStudents={()=>setStudents([])} onSwitchToLogin={()=>setIsRegistering(false)} />
-      ) : (
-        <LoginPortal onLoginSuccess={handleLoginTransition} onSuperAdminLogin={()=>{ setIsSuperAdmin(true); }} onSwitchToRegister={()=>setIsRegistering(true)} />
-      )}
+      <LoginPortal onLoginSuccess={handleLoginTransition} onSuperAdminLogin={()=>{ setIsSuperAdmin(true); }} onSwitchToRegister={()=>{}} />
     </div>
   );
 
@@ -251,12 +237,11 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-gray-100 flex flex-col font-sans">
       <div className="no-print bg-blue-900 text-white p-4 sticky top-0 z-50 shadow-md flex justify-between items-center">
         <div className="flex bg-blue-800 rounded p-1 gap-1 text-[10px] font-black uppercase overflow-x-auto no-scrollbar">
-          <button onClick={()=>setViewMode('home')} className={`px-4 py-2 rounded transition-all ${viewMode==='home' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-700'}`}>Home</button>
-          <button onClick={()=>setViewMode('master')} className={`px-4 py-2 rounded transition-all ${viewMode==='master' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-700'}`}>Sheets</button>
-          <button onClick={()=>setViewMode('reports')} className={`px-4 py-2 rounded transition-all ${viewMode==='reports' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-700'}`}>Reports</button>
-          <button onClick={()=>setViewMode('series')} className={`px-4 py-2 rounded transition-all ${viewMode==='series' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-700'}`}>Tracker</button>
-          <button onClick={()=>setViewMode('management')} className={`px-4 py-2 rounded transition-all ${viewMode==='management' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-700'}`}>Mgmt Hub</button>
-          <button onClick={()=>setViewMode('pupil_hub')} className={`px-4 py-2 rounded transition-all ${viewMode==='pupil_hub' ? 'bg-orange-600 text-white shadow-lg' : 'hover:bg-blue-700 text-blue-200'}`}>Pupil Hub</button>
+          <button onClick={()=>setViewMode('home')} className={`px-4 py-2 rounded transition-all ${viewMode==='home' ? 'bg-white text-blue-900' : 'hover:bg-blue-700'}`}>Home</button>
+          <button onClick={()=>setViewMode('master')} className={`px-4 py-2 rounded transition-all ${viewMode==='master' ? 'bg-white text-blue-900' : 'hover:bg-blue-700'}`}>Sheets</button>
+          <button onClick={()=>setViewMode('reports')} className={`px-4 py-2 rounded transition-all ${viewMode==='reports' ? 'bg-white text-blue-900' : 'hover:bg-blue-700'}`}>Reports</button>
+          <button onClick={()=>setViewMode('series')} className={`px-4 py-2 rounded transition-all ${viewMode==='series' ? 'bg-white text-blue-900' : 'hover:bg-blue-700'}`}>Tracker</button>
+          <button onClick={()=>setViewMode('management')} className={`px-4 py-2 rounded transition-all ${viewMode==='management' ? 'bg-white text-blue-900' : 'hover:bg-blue-700'}`}>Mgmt Hub</button>
         </div>
         <button onClick={handleLogout} className="bg-red-600 text-white px-5 py-2 rounded-xl font-black text-[10px] uppercase active:scale-95 transition-all">Logout</button>
       </div>
@@ -264,18 +249,13 @@ const App: React.FC = () => {
         {viewMode==='home' && <HomeDashboard students={processedStudents} settings={settings} setViewMode={setViewMode as any} />}
         {viewMode==='master' && <MasterSheet students={processedStudents} stats={stats} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); handleSaveAll({settings:next}); }} facilitators={facilitators} isFacilitator={activeRole === 'facilitator'} />}
         {viewMode==='series' && <SeriesBroadSheet students={students} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); handleSaveAll({settings:next}); }} currentProcessed={processedStudents.map(ps=>({id:ps.id, bestSixAggregate:ps.bestSixAggregate, rank:ps.rank, totalScore:ps.totalScore, category:ps.category}))} />}
-        {viewMode==='pupil_hub' && (
-           processedStudents.length > 0 ? (
-             <PupilDashboard student={processedStudents[0]} stats={stats} settings={settings} classAverageAggregate={classAvgAggregate} totalEnrolled={processedStudents.length} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); handleSaveAll({settings:next}); }} globalRegistry={globalRegistry} onLogout={handleLogout} loggedInUser={loggedInUser} />
-           ) : <div className="text-center p-20 opacity-30 font-black uppercase text-xs">No Candidate Shards Detected</div>
-        )}
         {viewMode==='reports' && (
           <div className="space-y-8">
             <input type="text" placeholder="Search..." value={reportSearchTerm} onChange={(e)=>setReportSearchTerm(e.target.value)} className="w-full p-6 rounded-3xl border-2 border-gray-100 shadow-sm font-bold no-print outline-none" />
             {processedStudents.filter(s=>(s.name||"").toLowerCase().includes(reportSearchTerm.toLowerCase())).map(s=><ReportCard key={s.id} student={s} stats={stats} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); handleSaveAll({settings:next}); }} classAverageAggregate={classAvgAggregate} totalEnrolled={processedStudents.length} isFacilitator={activeRole === 'facilitator'} />)}
           </div>
         )}
-        {viewMode==='management' && <ManagementDesk students={students} setStudents={setStudents} facilitators={facilitators} setFacilitators={setFacilitators} subjects={SUBJECT_LIST} settings={settings} onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} onBulkUpdate={(u)=>{ const next={...settings,...u}; setSettings(next); handleSaveAll({settings:next}); }} onSave={handleSaveAll} processedSnapshot={processedStudents} onLoadDummyData={()=>{}} onClearData={()=>{}} isFacilitator={activeRole === 'facilitator'} activeFacilitator={activeFacilitator} loggedInUser={loggedInUser} />}
+        {viewMode==='management' && <ManagementDesk students={students} setStudents={setStudents} facilitators={facilitators} setFacilitators={setFacilitators} subjects={SUBJECT_LIST} settings={settings} onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} onBulkUpdate={(u)=>{ const next={...settings,...u}; setSettings(next); handleSaveAll({settings:next}); }} onSave={handleSaveAll} processedSnapshot={processedStudents} onLoadDummyData={()=>{}} onClearData={()=>{}} isFacilitator={activeRole === 'facilitator'} loggedInUser={loggedInUser} />}
       </div>
     </div>
   );

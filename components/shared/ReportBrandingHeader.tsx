@@ -25,7 +25,7 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
       {/* Institutional Network Metadata */}
       <div className="text-[8px] font-black text-blue-600 uppercase tracking-[0.5em] mb-6 flex justify-center items-center gap-3 no-print">
         <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.6)]"></div>
-        <span>INSTITUTIONAL HUB:</span>
+        <span>NETWORK HUB NODE:</span>
         <span className="font-mono bg-blue-50 px-4 py-1 rounded-lg border border-blue-100">{settings.schoolNumber || "UBA-NODE-2025"}</span>
       </div>
 
@@ -41,7 +41,7 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
           )}
         </div>
 
-        {/* Institutional Identity Cluster - Fully Editable Particulars of UNITED BAYLOR ACADEMY */}
+        {/* Institutional Identity Cluster - Fully Editable Particulars */}
         <div className="flex-1 space-y-2">
           <h1 className={`${isLandscape ? 'text-6xl' : 'text-5xl'} font-black text-blue-950 tracking-tighter uppercase leading-none`}>
             {readOnly ? (settings.schoolName || "UNITED BAYLOR ACADEMY") : (
@@ -69,7 +69,7 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
          {subtitle && <p className="text-[11px] font-black text-blue-900 uppercase tracking-[0.6em] mt-3">{subtitle}</p>}
       </div>
 
-      {/* Connectivity & Handshake Cluster - Fully Editable Contacts */}
+      {/* Connectivity & Handshake Cluster - Fully Editable Contact Particulars */}
       <div className="flex justify-center flex-wrap gap-x-14 gap-y-3 text-[10px] font-black text-blue-950 uppercase tracking-[0.3em] pt-6 border-t border-slate-50">
         <div className="flex gap-2 items-center">
           <span className="text-slate-300">TEL:</span>
