@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { StudentData, GlobalSettings } from '../../types';
 import { supabase } from '../../supabaseClient';
@@ -18,6 +19,8 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [sbaEntryId, setSbaEntryId] = useState<number | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   /**
    * COMPOSITE ID GENERATOR: [INITIALS][YEAR][NUMBER]
@@ -41,23 +44,20 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     const targetName = data.name.toUpperCase().trim();
     const hubId = settings.schoolNumber;
     
-    // GENERATE COMPOSITE ID & PIN
     const studentId = generateCompositeId(settings.schoolName, settings.academicYear, sequence);
     const accessPin = generateSixDigitPin();
 
-    // 1. IDENTITY HUB SYNC (WITH PIN)
     const { error: idError } = await supabase.from('uba_identities').upsert({
       email: targetEmail,
       full_name: targetName,
       node_id: studentId,
       hub_id: hubId,
       role: 'pupil',
-      unique_code: accessPin // THE 6-DIGIT PIN AS REQUESTED
+      unique_code: accessPin 
     });
 
     if (idError) throw idError;
 
-    // 2. SHARED PUPIL REGISTRY
     const { error: pupError } = await supabase.from('uba_pupils').upsert({
       student_id: studentId,
       name: targetName,
@@ -71,7 +71,7 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     return {
       id: sequence, 
       indexNumber: studentId, 
-      uniqueCode: accessPin, // Local reference for UI recording
+      uniqueCode: accessPin, 
       name: targetName, 
       email: targetEmail, 
       gender: (data.gender || 'M').charAt(0).toUpperCase(),
@@ -116,6 +116,82 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     }
   };
 
+  /**
+   * BULK OPERATIONS: TEMPLATE DOWNLOAD
+   */
+  const handleDownloadTemplate = () => {
+    const csvContent = "FullName,Email,Gender(M/F),GuardianName,GuardianPhone,GuardianEmail\n" +
+                       "KWAME MENSAH,kwame@example.com,M,KOFI MENSAH,0240000000,kofi@example.com\n" +
+                       "ABENA OSEI,abena@example.com,F,RITA OSEI,0241111111,rita@example.com";
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", "UBA_Pupil_Template.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  /**
+   * BULK OPERATIONS: CSV UPLOAD & PARSING
+   */
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const content = event.target?.result as string;
+      const lines = content.split(/\r?\n/).filter(line => line.trim() !== "");
+      // Skip header
+      const dataRows = lines.slice(1);
+      
+      if (dataRows.length === 0) {
+        alert("UPLOAD REJECTED: The file contains no pupil data rows.");
+        return;
+      }
+
+      setIsEnrolling(true);
+      setUploadProgress({ current: 0, total: dataRows.length });
+
+      const newStudents: StudentData[] = [];
+      let baseSequence = students.length > 0 ? Math.max(...students.map(s => s.id)) + 1 : 101;
+
+      try {
+        for (let i = 0; i < dataRows.length; i++) {
+          const columns = dataRows[i].split(",").map(c => c.trim());
+          if (columns.length < 3) continue; // Minimum required: Name, Email, Gender
+
+          const [name, email, gender, guardianName, parentContact, parentEmail] = columns;
+          
+          const student = await enrollStudentAction({
+            name, email, gender: gender?.toUpperCase() === 'F' ? 'F' : 'M',
+            guardianName: guardianName || "",
+            parentContact: parentContact || "",
+            parentEmail: parentEmail || ""
+          }, baseSequence + i);
+          
+          newStudents.push(student);
+          setUploadProgress({ current: i + 1, total: dataRows.length });
+        }
+
+        setStudents(prev => [...prev, ...newStudents]);
+        onSave();
+        alert(`BULK HANDSHAKE COMPLETE: ${newStudents.length} pupils enrolled. All identity shards synced.`);
+      } catch (err: any) {
+        alert("Batch Ingestion Interrupted: " + err.message);
+      } finally {
+        setIsEnrolling(false);
+        setUploadProgress(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const handleUpdateSbaScore = (studentId: number, subject: string, score: string) => {
     const numeric = parseInt(score) || 0;
     setStudents(prev => prev.map(s => {
@@ -127,12 +203,39 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
 
   return (
     <div className="space-y-12 animate-in fade-in duration-500 pb-20 font-sans">
+      
+      {/* BULK OPERATIONS CONTROL */}
+      <section className="bg-slate-900 border border-white/5 p-8 rounded-[3rem] shadow-2xl flex flex-col md:flex-row justify-between items-center gap-6">
+         <div className="space-y-1">
+            <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Matrix Operations</h4>
+            <p className="text-white font-black uppercase text-sm">Batch Identity Management</p>
+         </div>
+         <div className="flex flex-wrap justify-center gap-3">
+            <button 
+              onClick={handleDownloadTemplate}
+              className="bg-white/10 hover:bg-white/20 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase border border-white/10 transition-all flex items-center gap-2"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Template
+            </button>
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isEnrolling}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase shadow-lg transition-all flex items-center gap-2"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              {uploadProgress ? `Processing ${uploadProgress.current}/${uploadProgress.total}` : 'Bulk Upload Roster'}
+            </button>
+            <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv,.txt" className="hidden" />
+         </div>
+      </section>
+
       <section className="bg-white p-10 rounded-[3.5rem] border border-gray-100 shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/5 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
         <div className="relative mb-10">
            <div className="space-y-2">
-              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Pupil Enrolment Registry</h3>
-              <p className="text-[10px] font-bold text-blue-500 uppercase tracking-[0.4em]">Composite ID & Secure PIN Protocol Active</p>
+              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Individual Enrolment</h3>
+              <p className="text-[10px] font-bold text-blue-500 uppercase tracking-[0.4em]">Identity Shard Manual Entry</p>
            </div>
         </div>
         
