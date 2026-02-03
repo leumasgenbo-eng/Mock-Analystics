@@ -42,7 +42,7 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
         .from('uba_identities')
         .select('*')
         .eq('full_name', inputName)
-        .or(`unique_code.eq.${inputKey},node_id.eq.${inputKey}`)
+        .or(`unique_code.eq."${inputKey}",node_id.eq."${inputKey}"`)
         .maybeSingle();
 
       if (idError) throw new Error("Recall Shard unreachable: " + idError.message);

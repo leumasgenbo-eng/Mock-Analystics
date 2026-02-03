@@ -63,10 +63,10 @@ const SchoolRegistrationPortal: React.FC<SchoolRegistrationPortalProps> = ({
       };
 
       // 2. INITIALIZE INSTITUTIONAL SHARDS IN PERSISTENCE HUB
-      await supabase.from('uba_persistence').insert([
-        { id: `${hubId}_settings`, hub_id: hubId, payload: newSettings },
-        { id: `${hubId}_students`, hub_id: hubId, payload: [] },
-        { id: `${hubId}_facilitators`, hub_id: hubId, payload: {} }
+      await supabase.from('uba_persistence').upsert([
+        { id: `${hubId}_settings`, hub_id: hubId, payload: newSettings, last_updated: ts },
+        { id: `${hubId}_students`, hub_id: hubId, payload: [], last_updated: ts },
+        { id: `${hubId}_facilitators`, hub_id: hubId, payload: {}, last_updated: ts }
       ]);
 
       // 3. UPDATE REGISTRY VIEW FOR HQ

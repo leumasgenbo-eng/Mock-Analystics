@@ -19,11 +19,11 @@ import SuperAdminPortal from './components/hq/SuperAdminPortal';
 import { SUBJECT_LIST, DEFAULT_THRESHOLDS, DEFAULT_NORMALIZATION, DEFAULT_CATEGORY_THRESHOLDS } from './constants';
 
 const DEFAULT_SETTINGS: GlobalSettings = {
-  schoolName: "UNITED BAYLOR ACADEMY",
+  schoolName: "SS-MAP ACADEMY",
   schoolMotto: "EXCELLENCE IN KNOWLEDGE AND CHARACTER",
-  schoolWebsite: "www.unitedbaylor.edu",
+  schoolWebsite: "www.ssmap.edu",
   schoolAddress: "ACCRA DIGITAL CENTRE, GHANA",
-  schoolNumber: "UBA-NODE-2025", 
+  schoolNumber: "SSM-NODE-2025", 
   schoolLogo: "", 
   examTitle: "OFFICIAL MOCK ASSESSMENT SERIES",
   termInfo: "TERM 2",
@@ -35,7 +35,7 @@ const DEFAULT_SETTINGS: GlobalSettings = {
   headTeacherName: "DIRECTOR NAME",
   reportDate: new Date().toLocaleDateString(),
   schoolContact: "+233 24 350 4091",
-  schoolEmail: "info@unitedbaylor.edu",
+  schoolEmail: "info@ssmap.edu",
   gradingThresholds: DEFAULT_THRESHOLDS,
   categoryThresholds: DEFAULT_CATEGORY_THRESHOLDS,
   normalizationConfig: DEFAULT_NORMALIZATION,
@@ -53,9 +53,9 @@ const DEFAULT_SETTINGS: GlobalSettings = {
   reportTemplate: 'standard',
   adminRoleTitle: "Academy Director",
   registryRoleTitle: "Examination Registry",
-  accessCode: "UBA-MASTER-KEY",
-  staffAccessCode: "STAFF-UBA-2025",
-  pupilAccessCode: "PUPIL-UBA-2025",
+  accessCode: "SSM-MASTER-KEY",
+  staffAccessCode: "STAFF-SSM-2025",
+  pupilAccessCode: "PUPIL-SSM-2025",
   enrollmentDate: new Date().toLocaleDateString()
 };
 
