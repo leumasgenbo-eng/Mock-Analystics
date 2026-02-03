@@ -34,7 +34,6 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
   const syncToRelationalTables = async (student: StudentData) => {
     const hubId = settings.schoolNumber;
     
-    // 1. Update Identity Hub (Authentication)
     await supabase.from('uba_identities').upsert({
       email: student.parentEmail?.toLowerCase().trim() || `${student.indexNumber}@unitedbaylor.edu.gh`,
       full_name: student.name.toUpperCase().trim(),
@@ -44,7 +43,6 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
       unique_code: student.uniqueCode 
     });
 
-    // 2. Update Pupil Registry (Institutional Roster)
     await supabase.from('uba_pupils').upsert({
       student_id: student.indexNumber,
       name: student.name.toUpperCase().trim(),
@@ -54,6 +52,29 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
       is_jhs_level: true,
       enrollment_status: 'ACTIVE'
     });
+  };
+
+  const handleDeleteStudent = async (id: number, indexNumber?: string) => {
+    if (!window.confirm(`CRITICAL: Purge candidate shard for ${indexNumber || 'this pupil'}? All assessments and global access will be revoked.`)) return;
+
+    setIsEnrolling(true);
+    try {
+      // 1. Remove from Relational Tables (Supabase)
+      if (indexNumber) {
+        await supabase.from('uba_pupils').delete().eq('student_id', indexNumber);
+        await supabase.from('uba_identities').delete().eq('node_id', indexNumber);
+      }
+
+      // 2. Update Local State
+      const nextStudents = students.filter(s => s.id !== id);
+      setStudents(nextStudents);
+      onSave({ students: nextStudents });
+      alert("CANDIDATE SHARD PERMANENTLY PURGED.");
+    } catch (err: any) {
+      alert("Deletion Fault: " + err.message);
+    } finally {
+      setIsEnrolling(false);
+    }
   };
 
   const handleAddOrUpdateStudent = async (e: React.FormEvent) => {
@@ -122,10 +143,9 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     if (students.length === 0) return alert("No pupils found to sync.");
     setIsEnrolling(true);
     try {
-      // Process sync in batches to avoid network congestion
       const syncTasks = students.map(s => syncToRelationalTables(s));
       await Promise.all(syncTasks);
-      onSave(); // Persist local settings too
+      onSave(); 
       alert(`CLOUD SYNCHRONIZATION COMPLETE: ${students.length} pupils mirrored to relational database.`);
     } catch (err: any) {
       alert("Sync Failure: " + err.message);
@@ -182,10 +202,6 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     link.href = url;
     link.download = `Registry_${settings.schoolNumber}.csv`;
     link.click();
-  };
-
-  const toggleSbaLedger = (id: number) => {
-     setActiveSbaId(activeSbaId === id ? null : id);
   };
 
   const filteredStudents = students.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -273,7 +289,6 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
 
          <div className="grid grid-cols-1 gap-6">
             {filteredStudents.map(s => {
-               const isOpen = activeSbaId === s.id;
                return (
                  <div key={s.id} className="bg-white rounded-[2.5rem] border border-gray-100 shadow-lg overflow-hidden group hover:border-blue-300 transition-all">
                     <div className="p-8 flex flex-col md:flex-row justify-between items-center gap-8">
@@ -292,6 +307,7 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
                        
                        <div className="flex gap-2">
                           <button onClick={() => { setEditingId(s.id); setFormData({ name: s.name, gender: s.gender === 'F' ? 'F' : 'M', guardianName: s.parentName || '', parentContact: s.parentContact || '', parentEmail: s.parentEmail || '' }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="bg-gray-50 text-slate-500 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase border border-gray-200 hover:bg-white transition-all">Edit Identity</button>
+                          <button onClick={() => handleDeleteStudent(s.id, s.indexNumber)} className="bg-red-50 text-red-600 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase border border-red-100 hover:bg-red-600 hover:text-white transition-all">Purge Shard</button>
                        </div>
                     </div>
                  </div>

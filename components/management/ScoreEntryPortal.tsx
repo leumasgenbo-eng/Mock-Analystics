@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { StudentData, GlobalSettings, ProcessedStudent } from '../../types';
 import { SUBJECT_REMARKS } from '../../constants';
@@ -20,7 +21,7 @@ const ScoreEntryPortal: React.FC<ScoreEntryPortalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
 
   const handleUpdateScore = (studentId: number, section: 'sectionA' | 'sectionB', value: string) => {
-    const numericVal = parseInt(value) || 0;
+    const numericVal = Math.min(100, Math.max(0, parseInt(value) || 0));
     setStudents(prev => prev.map(s => {
       if (s.id !== studentId) return s;
       const mockSet = s.mockData?.[settings.activeMock] || { scores: {}, sbaScores: {}, examSubScores: {}, facilitatorRemarks: {}, observations: { facilitator: "", invigilator: "", examiner: "" }, attendance: 0, conductRemark: "" };
@@ -37,6 +38,36 @@ const ScoreEntryPortal: React.FC<ScoreEntryPortalProps> = ({
             scores: { ...mockSet.scores, [selectedSubject]: newSubScores.sectionA + newSubScores.sectionB } 
           } 
         } 
+      };
+    }));
+  };
+
+  const handleClearSubjectScore = (studentId: number) => {
+    if (!window.confirm(`NULLIFY SHARD: Reset ${selectedSubject} scores to zero for this candidate?`)) return;
+    
+    setStudents(prev => prev.map(s => {
+      if (s.id !== studentId) return s;
+      const mockSet = s.mockData?.[settings.activeMock];
+      if (!mockSet) return s;
+
+      const nextScores = { ...mockSet.scores };
+      delete nextScores[selectedSubject];
+      const nextSubScores = { ...mockSet.examSubScores };
+      delete nextSubScores[selectedSubject];
+      const nextRemarks = { ...mockSet.facilitatorRemarks };
+      delete nextRemarks[selectedSubject];
+
+      return {
+        ...s,
+        mockData: {
+          ...s.mockData,
+          [settings.activeMock]: { 
+            ...mockSet, 
+            scores: nextScores, 
+            examSubScores: nextSubScores,
+            facilitatorRemarks: nextRemarks 
+          }
+        }
       };
     }));
   };
@@ -67,11 +98,11 @@ const ScoreEntryPortal: React.FC<ScoreEntryPortalProps> = ({
       {/* MOBILE CONTROL TERMINAL */}
       <div className="bg-slate-950 p-6 rounded-3xl shadow-xl border border-white/5 space-y-4">
         <div className="flex justify-between items-center">
-          <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">CAPI DATA ENTRY NODE</p>
+          <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Score Modulation Terminal</p>
           <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-[9px] font-black">{settings.activeMock}</span>
         </div>
         <div className="space-y-2">
-          <label className="text-[8px] font-black text-slate-500 uppercase ml-4">Subject Stream</label>
+          <label className="text-[8px] font-black text-slate-500 uppercase ml-4">Target Stream (Edit/Clear)</label>
           <select 
             value={selectedSubject} 
             onChange={(e) => setSelectedSubject(e.target.value)} 
@@ -107,7 +138,13 @@ const ScoreEntryPortal: React.FC<ScoreEntryPortalProps> = ({
                         <h4 className="text-sm font-black text-slate-950 uppercase leading-none truncate max-w-[200px]">{student.name}</h4>
                         <p className="text-[9px] font-mono text-gray-400 uppercase tracking-tighter">ID: {student.id.toString().padStart(6, '0')}</p>
                      </div>
-                     <div className={`w-3 h-3 rounded-full ${(subSc.sectionA + subSc.sectionB) > 0 ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-slate-200'}`}></div>
+                     <button 
+                        onClick={() => handleClearSubjectScore(student.id)}
+                        className="text-gray-300 hover:text-red-500 transition-colors p-1"
+                        title="Clear Subject Score"
+                     >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                     </button>
                   </div>
 
                   <div className="grid grid-cols-3 gap-4">
@@ -173,15 +210,15 @@ const ScoreEntryPortal: React.FC<ScoreEntryPortalProps> = ({
                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 15l-6-6-6 6"/></svg>
             </button>
             <div className="hidden sm:flex flex-col justify-center">
-               <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Matrix Sync</span>
-               <span className="text-sm font-black text-blue-950 uppercase">{filtered.length} Loaded</span>
+               <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Matrix Modulation</span>
+               <span className="text-sm font-black text-blue-950 uppercase">{filtered.length} Nodes Active</span>
             </div>
          </div>
          <button 
-           onClick={() => { onSave(); alert("CAPI Data Committed."); }}
+           onClick={() => { onSave(); alert("Scores modulated in cloud buffer."); }}
            className="bg-blue-950 text-white px-12 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.2em] shadow-2xl active:scale-95 transition-all hover:bg-black"
          >
-           Commit Shards
+           Commit Submissions
          </button>
       </div>
 

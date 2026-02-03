@@ -35,7 +35,6 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
     const uniqueCode = staff.uniqueCode || `PIN-${Math.floor(1000 + Math.random() * 8999)}`;
     const role = staff.role.toLowerCase().includes('admin') ? 'school_admin' : 'facilitator';
 
-    // 1. Identity Table Handshake (Authentication)
     await supabase.from('uba_identities').upsert({
       email: targetEmail,
       full_name: targetName,
@@ -45,7 +44,6 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       unique_code: uniqueCode
     });
 
-    // 2. Facilitator Table Record (Professional Profile)
     await supabase.from('uba_facilitators').upsert({
       email: targetEmail,
       full_name: targetName,
@@ -60,6 +58,29 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
     });
   };
 
+  const handleDeleteStaff = async (email: string) => {
+    if (!window.confirm("CRITICAL: Decommission this specialist? This erases their global identity and access keys permanently.")) return;
+    
+    setIsEnrolling(true);
+    try {
+      // 1. Remove from Relational Tables
+      await supabase.from('uba_facilitators').delete().eq('email', email);
+      await supabase.from('uba_identities').delete().eq('email', email);
+
+      // 2. Update Local State
+      const nextFacs = { ...facilitators };
+      delete nextFacs[email];
+      setFacilitators(nextFacs);
+      onSave({ facilitators: nextFacs });
+      
+      alert("STAFF NODE PERMANENTLY ERASED.");
+    } catch (err: any) {
+      alert("Deletion Fault: " + err.message);
+    } finally {
+      setIsEnrolling(false);
+    }
+  };
+
   const handleGlobalFacultySync = async () => {
     const facArray = Object.values(facilitators);
     if (facArray.length === 0) return alert("No facilitators found to sync.");
@@ -67,7 +88,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
     try {
       const syncTasks = facArray.map(f => syncStaffToTables(f));
       await Promise.all(syncTasks);
-      onSave(); // Sync local persistence
+      onSave();
       alert(`FACULTY CLOUD SYNC COMPLETE: ${facArray.length} specialists verified.`);
     } catch (err: any) {
       alert("Sync Failure: " + err.message);
@@ -261,9 +282,16 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                         <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Identity: {f.name} | ID: {f.enrolledId}</div>
                      </div>
                   </div>
-                  <button onClick={() => setExpandedStaff(isExpanded ? null : f.email)} className={`px-8 py-2.5 rounded-xl font-black text-[10px] uppercase transition-all shadow-md flex items-center gap-2 ${isExpanded ? 'bg-blue-900 text-white' : 'bg-slate-950 text-white'}`}>
-                     {isExpanded ? 'Hide Register' : 'View Register'}
-                  </button>
+                  <div className="flex gap-3">
+                    {!isFacilitator && (
+                      <button onClick={() => handleDeleteStaff(f.email)} className="bg-red-50 text-red-600 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase border border-red-100 hover:bg-red-600 hover:text-white transition-all">
+                        Decommission
+                      </button>
+                    )}
+                    <button onClick={() => setExpandedStaff(isExpanded ? null : f.email)} className={`px-8 py-2.5 rounded-xl font-black text-[10px] uppercase transition-all shadow-md flex items-center gap-2 ${isExpanded ? 'bg-blue-900 text-white' : 'bg-slate-950 text-white'}`}>
+                       {isExpanded ? 'Hide Register' : 'View Register'}
+                    </button>
+                  </div>
                </div>
             </div>
           );
