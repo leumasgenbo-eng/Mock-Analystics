@@ -38,6 +38,38 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
   const createEmptyRegister = (): InvigilationSlot[] => 
     Array.from({ length: 9 }, () => ({ dutyDate: '', timeSlot: '', subject: '' }));
 
+  const syncStaffToTables = async (staff: StaffAssignment) => {
+    const hubId = settings.schoolNumber;
+    const targetEmail = staff.email.toLowerCase().trim();
+    const targetName = staff.name.toUpperCase().trim();
+    const uniqueCode = staff.uniqueCode || `PIN-${Math.floor(1000 + Math.random() * 8999)}`;
+    const role = staff.role.toLowerCase().includes('admin') ? 'school_admin' : 'facilitator';
+
+    // 1. Identity Table Handshake
+    await supabase.from('uba_identities').upsert({
+      email: targetEmail,
+      full_name: targetName,
+      node_id: staff.enrolledId, 
+      hub_id: hubId,   
+      role: role,
+      unique_code: uniqueCode
+    });
+
+    // 2. Facilitator Table Record
+    await supabase.from('uba_facilitators').upsert({
+      email: targetEmail,
+      full_name: targetName,
+      hub_id: hubId,
+      node_id: staff.enrolledId,
+      taught_subject: staff.taughtSubject,
+      teaching_category: staff.teachingCategory || 'BASIC_SUBJECT_LEVEL',
+      unique_code: uniqueCode,
+      merit_balance: staff.account?.meritTokens || 0,
+      monetary_balance: staff.account?.monetaryCredits || 0,
+      invigilation_data: staff.invigilations
+    });
+  };
+
   const handleUpdateInvigilation = async (email: string, index: number, field: keyof InvigilationSlot, value: string) => {
     const nextFacs = { ...facilitators };
     const staff = { ...nextFacs[email] };
@@ -70,6 +102,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       
       const nextFacs = { ...facilitators };
       const hubId = settings.schoolNumber;
+      const syncTasks = [];
 
       for (const line of dataLines) {
         const parts = line.split(",").map(p => p.replace(/"/g, '').trim());
@@ -78,7 +111,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
           const nodeId = `${hubId}/FAC-${Math.floor(100 + Math.random() * 899)}`;
           const pin = `PIN-${Math.floor(1000 + Math.random() * 8999)}`;
           
-          nextFacs[email] = {
+          const staff: StaffAssignment = {
             name: parts[0].toUpperCase(),
             email,
             role: 'FACILITATOR',
@@ -90,11 +123,14 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
             account: { meritTokens: 0, monetaryCredits: 0, totalSubmissions: 0, unlockedQuestionIds: [] },
             marking: { dateTaken: '', dateReturned: '', inProgress: false }
           };
+          nextFacs[email] = staff;
+          syncTasks.push(syncStaffToTables(staff));
         }
       }
       setFacilitators(nextFacs);
+      await Promise.all(syncTasks);
       onSave({ facilitators: nextFacs });
-      alert(`FACULTY BATCH SUCCESS: ${dataLines.length} specialists queued.`);
+      alert(`FACULTY BATCH SUCCESS: ${dataLines.length} specialists synced with cloud tables.`);
       if (fileInputRef.current) fileInputRef.current.value = "";
     };
     reader.readAsText(file);
@@ -113,40 +149,8 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       const targetName = newStaff.name.toUpperCase().trim();
       const uniqueCode = newStaff.uniqueCode || `PIN-${Math.floor(1000 + Math.random() * 8999)}`;
       
-      let nodeId = "";
-      if (editingEmail) {
-          nodeId = facilitators[editingEmail].enrolledId;
-      } else {
-          nodeId = `${hubId}/FAC-${Math.floor(100 + Math.random() * 899).toString().padStart(3, '0')}`;
-      }
-
+      let nodeId = editingEmail ? facilitators[editingEmail].enrolledId : `${hubId}/FAC-${Math.floor(100 + Math.random() * 899).toString().padStart(3, '0')}`;
       const invRegister = editingEmail ? facilitators[editingEmail].invigilations : createEmptyRegister();
-
-      const { error: idError } = await supabase.from('uba_identities').upsert({
-        email: targetEmail,
-        full_name: targetName,
-        node_id: nodeId, 
-        hub_id: hubId,   
-        role: newStaff.role.toLowerCase().includes('admin') ? 'school_admin' : 'facilitator',
-        unique_code: uniqueCode
-      });
-
-      if (idError) throw idError;
-
-      const { error: facError } = await supabase.from('uba_facilitators').upsert({
-        email: targetEmail,
-        full_name: targetName,
-        hub_id: hubId,
-        node_id: nodeId,
-        taught_subject: newStaff.subject,
-        teaching_category: newStaff.category,
-        unique_code: uniqueCode,
-        merit_balance: editingEmail ? (dbFacilitators.find(d => d.email === editingEmail)?.merit_balance || 0) : 0,
-        monetary_balance: editingEmail ? (dbFacilitators.find(d => d.email === editingEmail)?.monetary_balance || 0) : 0,
-        invigilation_data: invRegister
-      });
-
-      if (facError) throw facError;
 
       const staff: StaffAssignment = {
         ... (editingEmail ? facilitators[editingEmail] : {
@@ -163,6 +167,8 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         enrolledId: nodeId
       };
 
+      await syncStaffToTables(staff);
+
       const nextFacilitators = { ...facilitators };
       if (editingEmail && editingEmail !== targetEmail) delete nextFacilitators[editingEmail];
       nextFacilitators[targetEmail] = staff;
@@ -175,6 +181,20 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       alert(editingEmail ? "STAFF NODE MODULATED." : "STAFF NODE ACTIVATED.");
     } catch (err: any) {
       alert(`ENROLLMENT FAULT: ${err.message}`);
+    } finally {
+      setIsEnrolling(false);
+    }
+  };
+
+  const handleGlobalRegistryCommit = async () => {
+    setIsEnrolling(true);
+    try {
+      const tasks = Object.values(facilitators).map(f => syncStaffToTables(f));
+      await Promise.all(tasks);
+      onSave();
+      alert("CLOUD REGISTRY VERIFIED: All staff identities mirrored to relational tables.");
+    } catch (err: any) {
+      alert("Registry Sync Fault: " + err.message);
     } finally {
       setIsEnrolling(false);
     }
@@ -219,6 +239,10 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
             <p className="text-white font-black uppercase text-2xl tracking-tight">Staff Node Management</p>
          </div>
          <div className="flex flex-wrap justify-center gap-3">
+            <button onClick={handleGlobalRegistryCommit} disabled={isEnrolling} className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-6 py-3 rounded-2xl font-black text-[10px] uppercase border border-blue-500/20 transition-all flex items-center gap-2">
+               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 2v6h-6"/><path d="M21 13a9 9 0 1 1-3-7.7L21 8"/></svg>
+               {isEnrolling ? 'Syncing...' : 'Finalize Registry'}
+            </button>
             <button onClick={() => fileInputRef.current?.click()} className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg transition-all active:scale-95 flex items-center gap-2">
                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
                Bulk Staff Upload

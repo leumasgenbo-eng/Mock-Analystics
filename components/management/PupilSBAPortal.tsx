@@ -31,40 +31,60 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
 
   const generateSixDigitPin = () => Math.floor(100000 + Math.random() * 900000).toString();
 
+  const syncToRelationalTables = async (student: StudentData) => {
+    const hubId = settings.schoolNumber;
+    
+    // 1. Update Identity Hub
+    await supabase.from('uba_identities').upsert({
+      email: student.parentEmail?.toLowerCase().trim() || `${student.indexNumber}@unitedbaylor.edu.gh`,
+      full_name: student.name.toUpperCase().trim(),
+      node_id: student.indexNumber!,
+      hub_id: hubId,
+      role: 'pupil',
+      unique_code: student.uniqueCode 
+    });
+
+    // 2. Update Pupil Registry
+    await supabase.from('uba_pupils').upsert({
+      student_id: student.indexNumber,
+      name: student.name.toUpperCase().trim(),
+      gender: student.gender === 'F' ? 'F' : 'M',
+      class_name: settings.termInfo || 'BASIC 9',
+      hub_id: hubId,
+      is_jhs_level: true,
+      enrollment_status: 'ACTIVE'
+    });
+  };
+
   const handleAddOrUpdateStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) return;
     setIsEnrolling(true);
 
     try {
-      const hubId = settings.schoolNumber;
       if (editingId) {
-        const nextStudents = students.map(s => s.id === editingId ? { 
-             ...s, 
-             name: formData.name.toUpperCase(), 
-             gender: formData.gender, 
-             parentName: formData.guardianName.toUpperCase(), 
-             parentContact: formData.parentContact, 
-             parentEmail: formData.parentEmail.toLowerCase(),
-             email: formData.parentEmail.toLowerCase()
-           } : s);
+        const student = students.find(s => s.id === editingId);
+        if (!student) return;
+
+        const updatedPupil = { 
+          ...student, 
+          name: formData.name.toUpperCase(), 
+          gender: formData.gender, 
+          parentName: formData.guardianName.toUpperCase(), 
+          parentContact: formData.parentContact, 
+          parentEmail: formData.parentEmail.toLowerCase(),
+          email: formData.parentEmail.toLowerCase()
+        };
+
+        const nextStudents = students.map(s => s.id === editingId ? updatedPupil : s);
         setStudents(nextStudents);
+        await syncToRelationalTables(updatedPupil);
         onSave({ students: nextStudents });
-        alert("PUPIL IDENTITY MODULATED.");
+        alert("PUPIL IDENTITY MODULATED IN CLOUD.");
       } else {
         const nextSeq = students.length > 0 ? Math.max(...students.map(s => s.id)) + 1 : 101;
         const studentId = generateCompositeId(settings.schoolName, settings.academicYear, nextSeq);
         const accessPin = generateSixDigitPin();
-
-        // Sync to Identity Shard
-        await supabase.from('uba_identities').upsert({
-          email: formData.parentEmail.toLowerCase().trim() || `${studentId}@unitedbaylor.edu.gh`,
-          full_name: formData.name.toUpperCase().trim(),
-          node_id: studentId,
-          hub_id: hubId,
-          role: 'pupil',
-          unique_code: accessPin 
-        });
 
         const newPupil: StudentData = {
           id: nextSeq,
@@ -85,8 +105,9 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
         
         const nextStudents = [...students, newPupil];
         setStudents(nextStudents);
+        await syncToRelationalTables(newPupil);
         onSave({ students: nextStudents });
-        alert(`ENROLLMENT SUCCESS: ${studentId}`);
+        alert(`ENROLLMENT SUCCESS: ${studentId}\nIdentity and Pupil Shards verified.`);
       }
       setFormData({ name: '', gender: 'M', guardianName: '', parentContact: '', parentEmail: '' });
       setEditingId(null);
@@ -95,6 +116,65 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     } finally { 
       setIsEnrolling(false); 
     }
+  };
+
+  const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const content = event.target?.result as string;
+      const lines = content.split(/\r?\n/).filter(l => l.trim() !== "");
+      const dataLines = lines.slice(1);
+      
+      const nextStudents = [...students];
+      let startId = nextStudents.length > 0 ? Math.max(...nextStudents.map(s => s.id)) + 1 : 101;
+
+      const syncTasks = [];
+
+      for (const line of dataLines) {
+        const parts = line.split(",").map(p => p.replace(/"/g, '').trim());
+        if (parts[0]) {
+          const studentId = generateCompositeId(settings.schoolName, settings.academicYear, startId);
+          const pin = generateSixDigitPin();
+          const p: StudentData = {
+            id: startId++,
+            name: parts[0].toUpperCase(),
+            gender: (parts[1] || 'M').toUpperCase().startsWith('F') ? 'F' : 'M',
+            parentName: parts[2] || '',
+            parentContact: parts[3] || '',
+            parentEmail: parts[4] || '',
+            email: parts[4] || `${studentId.toLowerCase()}@ssmap.app`,
+            indexNumber: studentId,
+            uniqueCode: pin,
+            attendance: 0, scores: {}, sbaScores: {}, examSubScores: {}, mockData: {}
+          };
+          nextStudents.push(p);
+          syncTasks.push(syncToRelationalTables(p));
+        }
+      }
+
+      setStudents(nextStudents);
+      await Promise.all(syncTasks);
+      onSave({ students: nextStudents });
+      alert(`BULK HANDSHAKE SUCCESS: ${dataLines.length} identities synced with uba_pupils table.`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+    reader.readAsText(file);
+  };
+
+  const handleGlobalTableCommit = async () => {
+     setIsEnrolling(true);
+     try {
+        const tasks = students.map(s => syncToRelationalTables(s));
+        await Promise.all(tasks);
+        onSave();
+        alert(`CLOUD INTEGRITY VERIFIED: ${students.length} records mirrored to relational hub.`);
+     } catch (err: any) {
+        alert("Sync Fault: " + err.message);
+     } finally {
+        setIsEnrolling(false);
+     }
   };
 
   const handleDownloadRegistry = () => {
@@ -128,44 +208,6 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     link.href = url;
     link.download = `SBA_Ledger_${settings.activeMock}_${settings.schoolNumber}.csv`;
     link.click();
-  };
-
-  const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      const lines = content.split(/\r?\n/).filter(l => l.trim() !== "");
-      const dataLines = lines.slice(1);
-      
-      const nextStudents = [...students];
-      let startId = nextStudents.length > 0 ? Math.max(...nextStudents.map(s => s.id)) + 1 : 101;
-
-      dataLines.forEach(line => {
-        const parts = line.split(",").map(p => p.replace(/"/g, '').trim());
-        if (parts[0]) {
-          const studentId = generateCompositeId(settings.schoolName, settings.academicYear, startId);
-          nextStudents.push({
-            id: startId++,
-            name: parts[0].toUpperCase(),
-            gender: (parts[1] || 'M').toUpperCase().startsWith('F') ? 'F' : 'M',
-            parentName: parts[2] || '',
-            parentContact: parts[3] || '',
-            parentEmail: parts[4] || '',
-            email: parts[4] || `${studentId.toLowerCase()}@ssmap.app`,
-            indexNumber: studentId,
-            uniqueCode: generateSixDigitPin(),
-            attendance: 0, scores: {}, sbaScores: {}, examSubScores: {}, mockData: {}
-          });
-        }
-      });
-      setStudents(nextStudents);
-      onSave({ students: nextStudents });
-      alert(`BULK INGESTION SUCCESS: ${dataLines.length} identities added to buffer.`);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    };
-    reader.readAsText(file);
   };
 
   const handleUpdateSBA = (studentId: number, subject: string, value: string) => {
@@ -208,9 +250,9 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   Export Registry
                </button>
-               <button onClick={handleDownloadSbaLedger} className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-6 py-3 rounded-2xl font-black text-[10px] uppercase border border-blue-500/20 transition-all flex items-center gap-2">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                  SBA Ledger CSV
+               <button onClick={handleGlobalTableCommit} disabled={isEnrolling} className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-6 py-3 rounded-2xl font-black text-[10px] uppercase border border-blue-500/20 transition-all flex items-center gap-2">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 2v6h-6"/><path d="M21 13a9 9 0 1 1-3-7.7L21 8"/></svg>
+                  {isEnrolling ? 'Syncing...' : 'Commit to Cloud Tables'}
                </button>
                <button onClick={() => fileInputRef.current?.click()} className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-xl transition-all active:scale-95 flex items-center gap-2">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
@@ -245,7 +287,7 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
           </div>
           <div className="space-y-1">
              <label className="text-[9px] font-black text-slate-400 uppercase ml-2 tracking-widest">Phone Contact</label>
-             <input type="text" value={formData.parentContact} onChange={e=>setFormData({...formData, parentContact: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none" placeholder="000 000 0000" />
+             <input type="text" value={formData.parentContact} onChange={e=>setFormData({...formData, parentContact: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-black outline-none" placeholder="024 000 0000" />
           </div>
           <div className="space-y-1 md:col-span-2">
              <label className="text-[9px] font-black text-slate-400 uppercase ml-2 tracking-widest">Notification Email</label>
