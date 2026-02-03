@@ -34,7 +34,7 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
   const syncToRelationalTables = async (student: StudentData) => {
     const hubId = settings.schoolNumber;
     
-    // 1. Update Identity Hub
+    // 1. Update Identity Hub (Authentication)
     await supabase.from('uba_identities').upsert({
       email: student.parentEmail?.toLowerCase().trim() || `${student.indexNumber}@unitedbaylor.edu.gh`,
       full_name: student.name.toUpperCase().trim(),
@@ -44,7 +44,7 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
       unique_code: student.uniqueCode 
     });
 
-    // 2. Update Pupil Registry
+    // 2. Update Pupil Registry (Institutional Roster)
     await supabase.from('uba_pupils').upsert({
       student_id: student.indexNumber,
       name: student.name.toUpperCase().trim(),
@@ -80,7 +80,7 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
         setStudents(nextStudents);
         await syncToRelationalTables(updatedPupil);
         onSave({ students: nextStudents });
-        alert("PUPIL IDENTITY MODULATED IN CLOUD.");
+        alert("CANDIDATE MODULATED IN CLOUD REGISTRY.");
       } else {
         const nextSeq = students.length > 0 ? Math.max(...students.map(s => s.id)) + 1 : 101;
         const studentId = generateCompositeId(settings.schoolName, settings.academicYear, nextSeq);
@@ -107,7 +107,7 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
         setStudents(nextStudents);
         await syncToRelationalTables(newPupil);
         onSave({ students: nextStudents });
-        alert(`ENROLLMENT SUCCESS: ${studentId}\nIdentity and Pupil Shards verified.`);
+        alert(`ENROLLMENT SUCCESS: ${studentId}`);
       }
       setFormData({ name: '', gender: 'M', guardianName: '', parentContact: '', parentEmail: '' });
       setEditingId(null);
@@ -115,6 +115,22 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
       alert("Matrix Fault: " + err.message); 
     } finally { 
       setIsEnrolling(false); 
+    }
+  };
+
+  const handleGlobalCloudSync = async () => {
+    if (students.length === 0) return alert("No pupils found to sync.");
+    setIsEnrolling(true);
+    try {
+      // Process sync in batches to avoid network congestion
+      const syncTasks = students.map(s => syncToRelationalTables(s));
+      await Promise.all(syncTasks);
+      onSave(); // Persist local settings too
+      alert(`CLOUD SYNCHRONIZATION COMPLETE: ${students.length} pupils mirrored to relational database.`);
+    } catch (err: any) {
+      alert("Sync Failure: " + err.message);
+    } finally {
+      setIsEnrolling(false);
     }
   };
 
@@ -130,14 +146,12 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
       const nextStudents = [...students];
       let startId = nextStudents.length > 0 ? Math.max(...nextStudents.map(s => s.id)) + 1 : 101;
 
-      const syncTasks = [];
-
       for (const line of dataLines) {
         const parts = line.split(",").map(p => p.replace(/"/g, '').trim());
         if (parts[0]) {
           const studentId = generateCompositeId(settings.schoolName, settings.academicYear, startId);
           const pin = generateSixDigitPin();
-          const p: StudentData = {
+          nextStudents.push({
             id: startId++,
             name: parts[0].toUpperCase(),
             gender: (parts[1] || 'M').toUpperCase().startsWith('F') ? 'F' : 'M',
@@ -148,33 +162,15 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
             indexNumber: studentId,
             uniqueCode: pin,
             attendance: 0, scores: {}, sbaScores: {}, examSubScores: {}, mockData: {}
-          };
-          nextStudents.push(p);
-          syncTasks.push(syncToRelationalTables(p));
+          });
         }
       }
-
       setStudents(nextStudents);
-      await Promise.all(syncTasks);
       onSave({ students: nextStudents });
-      alert(`BULK HANDSHAKE SUCCESS: ${dataLines.length} identities synced with uba_pupils table.`);
+      alert(`BULK INGESTION SUCCESS: ${dataLines.length} candidates added to local buffer. Please click 'SAVE ALL TO CLOUD' to finalize.`);
       if (fileInputRef.current) fileInputRef.current.value = "";
     };
     reader.readAsText(file);
-  };
-
-  const handleGlobalTableCommit = async () => {
-     setIsEnrolling(true);
-     try {
-        const tasks = students.map(s => syncToRelationalTables(s));
-        await Promise.all(tasks);
-        onSave();
-        alert(`CLOUD INTEGRITY VERIFIED: ${students.length} records mirrored to relational hub.`);
-     } catch (err: any) {
-        alert("Sync Fault: " + err.message);
-     } finally {
-        setIsEnrolling(false);
-     }
   };
 
   const handleDownloadRegistry = () => {
@@ -184,49 +180,8 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `Registry_${settings.schoolNumber}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `Registry_${settings.schoolNumber}.csv`;
     link.click();
-  };
-
-  const handleDownloadSbaLedger = () => {
-    let header = "Pupil Name,NodeID";
-    subjects.forEach(s => header += `,${s}`);
-    header += "\n";
-    
-    const rows = students.map(s => {
-       const mockData = s.mockData?.[settings.activeMock] || { sbaScores: {} };
-       let row = `"${s.name}","${s.indexNumber || ''}"`;
-       subjects.forEach(sub => {
-          row += `,${mockData.sbaScores[sub] || 0}`;
-       });
-       return row;
-    }).join("\n");
-
-    const blob = new Blob([header + rows], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `SBA_Ledger_${settings.activeMock}_${settings.schoolNumber}.csv`;
-    link.click();
-  };
-
-  const handleUpdateSBA = (studentId: number, subject: string, value: string) => {
-    const score = Math.min(100, Math.max(0, parseInt(value) || 0));
-    const nextStudents = students.map(s => {
-      if (s.id !== studentId) return s;
-      const mockSet = s.mockData?.[settings.activeMock] || { scores: {}, sbaScores: {}, examSubScores: {}, facilitatorRemarks: {}, observations: { facilitator: "", invigilator: "", examiner: "" }, attendance: 0, conductRemark: "" };
-      return {
-        ...s,
-        mockData: {
-          ...(s.mockData || {}),
-          [settings.activeMock]: {
-            ...mockSet,
-            sbaScores: { ...(mockSet.sbaScores || {}), [subject]: score }
-          }
-        }
-      };
-    });
-    setStudents(nextStudents);
   };
 
   const toggleSbaLedger = (id: number) => {
@@ -246,17 +201,17 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
                <p className="text-white text-2xl font-black uppercase tracking-tight">Data Management Node</p>
             </div>
             <div className="flex flex-wrap justify-center gap-4">
-               <button onClick={handleDownloadRegistry} className="bg-white/5 hover:bg-white/10 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase border border-white/10 transition-all flex items-center gap-2">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  Export Registry
-               </button>
-               <button onClick={handleGlobalTableCommit} disabled={isEnrolling} className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-6 py-3 rounded-2xl font-black text-[10px] uppercase border border-blue-500/20 transition-all flex items-center gap-2">
+               <button onClick={handleGlobalCloudSync} disabled={isEnrolling} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-xl transition-all active:scale-95 flex items-center gap-2">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 2v6h-6"/><path d="M21 13a9 9 0 1 1-3-7.7L21 8"/></svg>
-                  {isEnrolling ? 'Syncing...' : 'Commit to Cloud Tables'}
+                  {isEnrolling ? 'Syncing...' : 'Save All to Cloud'}
                </button>
                <button onClick={() => fileInputRef.current?.click()} className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-xl transition-all active:scale-95 flex items-center gap-2">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
                   Bulk Enrollment (CSV)
+               </button>
+               <button onClick={handleDownloadRegistry} className="bg-white/5 hover:bg-white/10 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase border border-white/10 transition-all flex items-center gap-2">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Export Registry
                </button>
                <input type="file" ref={fileInputRef} onChange={handleBulkUpload} accept=".csv" className="hidden" />
             </div>
@@ -319,8 +274,6 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
          <div className="grid grid-cols-1 gap-6">
             {filteredStudents.map(s => {
                const isOpen = activeSbaId === s.id;
-               const mockSet = s.mockData?.[settings.activeMock] || { sbaScores: {} };
-               
                return (
                  <div key={s.id} className="bg-white rounded-[2.5rem] border border-gray-100 shadow-lg overflow-hidden group hover:border-blue-300 transition-all">
                     <div className="p-8 flex flex-col md:flex-row justify-between items-center gap-8">
@@ -333,51 +286,14 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
                              <div className="flex flex-wrap items-center gap-3">
                                 <span className="text-[8px] font-black text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded tracking-widest">{s.indexNumber || 'NO_ID'}</span>
                                 <span className="text-[8px] font-black text-emerald-600 uppercase bg-emerald-50 px-2 py-0.5 rounded tracking-widest">PIN: {s.uniqueCode || '----'}</span>
-                                <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">{s.parentName || 'No Guardian'}</span>
                              </div>
                           </div>
                        </div>
                        
                        <div className="flex gap-2">
-                          <button onClick={() => toggleSbaLedger(s.id)} className={`px-6 py-2.5 rounded-xl font-black text-[10px] uppercase transition-all flex items-center gap-2 ${isOpen ? 'bg-blue-900 text-white shadow-lg' : 'bg-blue-50 text-blue-900 hover:bg-blue-100'}`}>
-                             {isOpen ? 'Hide SBA' : 'SBA Ledger'}
-                             <svg className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9"/></svg>
-                          </button>
                           <button onClick={() => { setEditingId(s.id); setFormData({ name: s.name, gender: s.gender === 'F' ? 'F' : 'M', guardianName: s.parentName || '', parentContact: s.parentContact || '', parentEmail: s.parentEmail || '' }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="bg-gray-50 text-slate-500 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase border border-gray-200 hover:bg-white transition-all">Edit Identity</button>
                        </div>
                     </div>
-
-                    {/* Dropping Assessment Ledger Shard */}
-                    {isOpen && (
-                       <div className="bg-slate-50 p-10 border-t border-gray-100 animate-in slide-in-from-top-4 duration-500">
-                          <div className="flex justify-between items-center mb-8">
-                             <div className="space-y-1">
-                                <h5 className="text-sm font-black text-blue-950 uppercase tracking-widest">SBA Assessment Ledger</h5>
-                                <p className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.3em]">Cycle: {settings.activeMock} • Mastery Multiplier: {settings.sbaConfig.sbaWeight}%</p>
-                             </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                             {subjects.map(sub => (
-                                <div key={sub} className="bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm space-y-2 group/sba hover:border-blue-400 transition-all">
-                                   <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest block truncate">{sub}</label>
-                                   <input 
-                                      type="number" 
-                                      min="0" max="100"
-                                      value={mockSet.sbaScores?.[sub] || ''}
-                                      onChange={e => handleUpdateSBA(s.id, sub, e.target.value)}
-                                      placeholder="0"
-                                      className="w-full bg-slate-50 border-2 border-transparent rounded-xl py-3 text-center font-black text-blue-900 text-xl outline-none focus:bg-white focus:border-blue-500 transition-all"
-                                   />
-                                </div>
-                             ))}
-                          </div>
-                          
-                          <div className="mt-10 flex justify-end">
-                             <button onClick={() => { onSave(); setActiveSbaId(null); alert("SBA SHARDS COMMITTED."); }} className="bg-blue-900 text-white px-12 py-4 rounded-[2rem] font-black text-[10px] uppercase shadow-xl hover:bg-black transition-all">Finalize Shards</button>
-                          </div>
-                       </div>
-                    )}
                  </div>
                );
             })}
