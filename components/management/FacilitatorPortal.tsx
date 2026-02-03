@@ -43,7 +43,6 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
     const staff = { ...nextFacs[email] };
     const invs = [...staff.invigilations];
     
-    // Ensure array has 9 slots
     while(invs.length < 9) invs.push({ dutyDate: '', timeSlot: '', subject: '' });
     
     invs[index] = { ...invs[index], [field]: value };
@@ -244,7 +243,6 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       <div className="grid grid-cols-1 gap-8">
         {(Object.values(facilitators) as StaffAssignment[]).map((f, fIdx) => {
           const isExpanded = expandedStaff === f.email;
-          const dbData = dbFacilitators.find(d => d.email === f.email);
           const dutiesDone = f.invigilations.filter(i => i.dutyDate && i.subject).length;
           
           return (
@@ -281,39 +279,37 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                   <div className="bg-slate-50 p-8 border-t border-gray-100 animate-in slide-in-from-top-4 duration-500">
                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                         {/* Facilitator Meta Shard */}
-                        <div className="lg:col-span-4 space-y-6">
+                        <div className="lg:col-span-3 space-y-6">
                            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 space-y-5 shadow-sm">
-                              <h5 className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b border-gray-50 pb-3">Identity recall particulars</h5>
+                              <h5 className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b border-gray-50 pb-3">Identity Shard</h5>
                               <div className="space-y-4">
                                  <div>
-                                    <span className="text-[7px] font-black text-slate-400 uppercase block mb-1">Hub Role</span>
-                                    <p className="text-xs font-black text-slate-900">{f.role || 'FACILITATOR'}</p>
+                                    <span className="text-[7px] font-black text-slate-400 uppercase block mb-1">Legal Identity</span>
+                                    <p className="text-xs font-black text-slate-900">{f.name}</p>
                                  </div>
                                  <div>
-                                    <span className="text-[7px] font-black text-slate-400 uppercase block mb-1">Access PIN</span>
-                                    <p className="text-xs font-mono font-black text-indigo-600">{f.uniqueCode || '---'}</p>
+                                    <span className="text-[7px] font-black text-slate-400 uppercase block mb-1">Hub Role</span>
+                                    <p className="text-xs font-black text-blue-600">{f.role || 'FACILITATOR'}</p>
                                  </div>
-                                 <div className="pt-4 grid grid-cols-2 gap-4 border-t border-gray-50">
-                                    <div className="text-center bg-slate-50 p-4 rounded-2xl">
-                                       <span className="text-[7px] font-black text-gray-400 uppercase block mb-1">Merit</span>
-                                       <p className="text-lg font-black text-blue-900">{dbData?.merit_balance || 0}</p>
-                                    </div>
-                                    <div className="text-center bg-slate-50 p-4 rounded-2xl">
-                                       <span className="text-[7px] font-black text-gray-400 uppercase block mb-1">Vault</span>
-                                       <p className="text-sm font-black text-emerald-600 font-mono">GHS {dbData?.monetary_balance?.toFixed(2) || '0.00'}</p>
-                                    </div>
+                                 <div>
+                                    <span className="text-[7px] font-black text-slate-400 uppercase block mb-1">Enrolled Institutional ID</span>
+                                    <p className="text-[10px] font-mono font-black text-indigo-600">{f.enrolledId || '---'}</p>
+                                 </div>
+                                 <div className="pt-4 border-t border-gray-50">
+                                    <span className="text-[7px] font-black text-slate-400 uppercase block mb-1">Access PIN</span>
+                                    <p className="text-xs font-mono font-black text-slate-400">{f.uniqueCode || '---'}</p>
                                  </div>
                               </div>
                            </div>
                         </div>
 
                         {/* Invigilation Register (1-9) */}
-                        <div className="lg:col-span-8 bg-white p-10 rounded-[3rem] border border-gray-100 space-y-8 shadow-sm">
+                        <div className="lg:col-span-9 bg-white p-10 rounded-[3rem] border border-gray-100 space-y-8 shadow-sm">
                            <div className="flex justify-between items-center border-b border-gray-50 pb-5">
-                              <h5 className="text-[12px] font-black text-indigo-900 uppercase tracking-widest">Invigilation Register (1-9)</h5>
-                              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Official Duty Ledger</span>
+                              <h5 className="text-[12px] font-black text-indigo-900 uppercase tracking-widest">Invigilation Register (1-9) ...</h5>
+                              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Authorized Duty Ledger</span>
                            </div>
-                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                               {Array.from({ length: 9 }).map((_, idx) => {
                                  const inv = f.invigilations[idx] || { dutyDate: '', timeSlot: '', subject: '' };
                                  return (
@@ -322,34 +318,34 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                                           <span className="w-8 h-8 rounded-xl bg-indigo-950 text-white flex items-center justify-center font-black text-[10px] shadow-lg">{idx + 1}.</span>
                                           <div className={`w-2 h-2 rounded-full ${inv.dutyDate && inv.subject ? 'bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse' : 'bg-gray-200'}`}></div>
                                        </div>
-                                       <div className="space-y-3">
+                                       <div className="space-y-4">
                                           <div className="space-y-1">
-                                             <label className="text-[7px] font-black text-slate-400 uppercase ml-2">mm/dd/yyyy</label>
+                                             <label className="text-[7px] font-black text-slate-400 uppercase ml-2 tracking-tighter">mm/dd/yyyy</label>
                                              <input 
                                                 type="date" 
                                                 value={inv.dutyDate || ''} 
                                                 onChange={(e) => handleUpdateInvigilation(f.email, idx, 'dutyDate', e.target.value)}
-                                                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2 text-[10px] font-black uppercase text-indigo-950 outline-none focus:ring-4 focus:ring-indigo-500/10" 
+                                                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[10px] font-black uppercase text-indigo-950 outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all" 
                                              />
                                           </div>
                                           <div className="space-y-1">
-                                             <label className="text-[7px] font-black text-slate-400 uppercase ml-2">TIME</label>
+                                             <label className="text-[7px] font-black text-slate-400 uppercase ml-2 tracking-tighter">TIME</label>
                                              <input 
                                                 type="text" 
-                                                placeholder="HH:MM AM/PM"
+                                                placeholder="TIME"
                                                 value={inv.timeSlot || ''} 
                                                 onChange={(e) => handleUpdateInvigilation(f.email, idx, 'timeSlot', e.target.value.toUpperCase())}
-                                                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2 text-[10px] font-black uppercase text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/10" 
+                                                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[10px] font-black uppercase text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all" 
                                              />
                                           </div>
                                           <div className="space-y-1">
-                                             <label className="text-[7px] font-black text-slate-400 uppercase ml-2">SELECT SUBJECT...</label>
+                                             <label className="text-[7px] font-black text-slate-400 uppercase ml-2 tracking-tighter">SELECT SUBJECT...</label>
                                              <select 
                                                 value={inv.subject || ''} 
                                                 onChange={(e) => handleUpdateInvigilation(f.email, idx, 'subject', e.target.value)}
-                                                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2 text-[10px] font-black uppercase text-slate-900 outline-none focus:ring-4 focus:ring-indigo-500/10"
+                                                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[10px] font-black uppercase text-slate-900 outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all"
                                              >
-                                                <option value="">-- SELECT --</option>
+                                                <option value="">SELECT SUBJECT...</option>
                                                 {subjects.map(s => <option key={s} value={s}>{s}</option>)}
                                              </select>
                                           </div>

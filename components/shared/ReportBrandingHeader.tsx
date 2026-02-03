@@ -26,7 +26,11 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
       <div className="text-[8px] font-black text-blue-600 uppercase tracking-[0.5em] mb-6 flex justify-center items-center gap-3 no-print">
         <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.6)]"></div>
         <span>NETWORK HUB NODE:</span>
-        <span className="font-mono bg-blue-50 px-4 py-1 rounded-lg border border-blue-100">{settings.schoolNumber || "UBA-NODE-2025"}</span>
+        <span className="font-mono bg-blue-50 px-4 py-1 rounded-lg border border-blue-100">
+          {readOnly ? (settings.schoolNumber || "UBA-NODE-2025") : (
+            <EditableField value={settings.schoolNumber || "UBA-NODE-2025"} onChange={(v) => onSettingChange('schoolNumber', v.toUpperCase())} className="font-mono" />
+          )}
+        </span>
       </div>
 
       <div className="flex flex-col md:flex-row items-center justify-center gap-12">
