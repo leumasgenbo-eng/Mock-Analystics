@@ -15,7 +15,6 @@ import MasterSheet from './components/reports/MasterSheet';
 import ReportCard from './components/reports/ReportCard';
 import SeriesBroadSheet from './components/reports/SeriesBroadSheet';
 import SuperAdminPortal from './components/hq/SuperAdminPortal';
-import PupilDashboard from './components/pupil/PupilDashboard';
 
 import { SUBJECT_LIST, DEFAULT_THRESHOLDS, DEFAULT_NORMALIZATION, DEFAULT_CATEGORY_THRESHOLDS } from './constants';
 
@@ -82,7 +81,7 @@ const App: React.FC = () => {
 
   /**
    * EMERGENCY BLACK-BOX PERSISTENCE
-   * Ensures 0% data loss by mirroring to local hardware before network dispatch.
+   * v9.5.7 Extension: Relational Score Registry Push
    */
   const handleSaveAll = async (overrides?: { settings?: GlobalSettings, students?: StudentData[], facilitators?: Record<string, StaffAssignment> }) => {
     const activeSettings = overrides?.settings || stateRef.current.settings;
@@ -101,23 +100,44 @@ const App: React.FC = () => {
     }));
     
     try {
-      // MIRROR 2: CLOUD HUB (ASYNC)
       const timestamp = new Date().toISOString();
+      
+      // MIRROR 2: CLOUD PERSISTENCE (BULK JSON)
       const updates = [
         { id: `${hubId}_settings`, hub_id: hubId, payload: activeSettings, last_updated: timestamp },
         { id: `${hubId}_students`, hub_id: hubId, payload: activeStudents, last_updated: timestamp },
         { id: `${hubId}_facilitators`, hub_id: hubId, payload: activeFacs, last_updated: timestamp }
       ];
+      await supabase.from('uba_persistence').upsert(updates);
 
-      const { error } = await supabase.from('uba_persistence').upsert(updates);
-      if (error) throw error;
+      // MIRROR 3: RELATIONAL SCORE REGISTRY (FLATTENED)
+      // We push scores for the active mock to the public.uba_mock_scores table for HQ analysis
+      const activeMock = activeSettings.activeMock;
+      const scoresPayload = activeStudents.flatMap(s => {
+         const mockSet = s.mockData?.[activeMock];
+         if (!mockSet) return [];
+         return Object.keys(mockSet.scores).map(subject => ({
+            hub_id: hubId,
+            student_id: s.indexNumber || s.id.toString(),
+            mock_series: activeMock,
+            subject,
+            total_score: mockSet.scores[subject],
+            sba_score: mockSet.sbaScores[subject] || 0,
+            section_a: mockSet.examSubScores[subject]?.sectionA || 0,
+            section_b: mockSet.examSubScores[subject]?.sectionB || 0,
+            academic_year: activeSettings.academicYear
+         }));
+      });
 
-      // AUDIT LOG (RESTORED)
+      if (scoresPayload.length > 0) {
+         await supabase.from('uba_mock_scores').upsert(scoresPayload);
+      }
+
       await supabase.from('uba_activity_logs').insert({
           node_id: hubId,
           staff_id: loggedInUser?.email || 'SYSTEM_AUTO',
           action_type: 'GLOBAL_PERSISTENCE_SYNC',
-          context_data: { status: 'COMMITTED', version: 'v9.5.4' }
+          context_data: { status: 'COMMITTED', scores_synced: scoresPayload.length, version: 'v9.5.7' }
       });
     } catch (e) {
       console.warn("[CLOUD MIRROR FAILED - LOCAL SHARD PRESERVED]", e);
@@ -144,14 +164,12 @@ const App: React.FC = () => {
           if (row.id === `${hubId}_facilitators`) finalFacilitators = row.payload;
         });
       } else {
-        // FALLBACK: RESURRECT FROM SAFETY SHARD
         const safety = localStorage.getItem(`uba_safety_shard_${hubId}`);
         if (safety) {
            const parsed = JSON.parse(safety);
            finalSettings = parsed.settings;
            finalStudents = parsed.students;
            finalFacilitators = parsed.facilitators;
-           console.log("[RECOVERY] System resurrected from Local Black-Box Shard.");
         }
       }
 
