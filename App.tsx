@@ -62,6 +62,7 @@ const DEFAULT_SETTINGS: GlobalSettings = {
 const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
   const [viewMode, setViewMode] = useState<'home' | 'master' | 'reports' | 'management' | 'series' | 'pupil_hub'>('home');
   const [reportSearchTerm, setReportSearchTerm] = useState('');
   
@@ -81,7 +82,6 @@ const App: React.FC = () => {
 
   /**
    * EMERGENCY BLACK-BOX PERSISTENCE
-   * v9.5.8 Extension: Relational Score Registry & Particulars Mirroring
    */
   const handleSaveAll = async (overrides?: { settings?: GlobalSettings, students?: StudentData[], facilitators?: Record<string, StaffAssignment> }) => {
     const activeSettings = overrides?.settings || stateRef.current.settings;
@@ -108,7 +108,6 @@ const App: React.FC = () => {
       ];
       await supabase.from('uba_persistence').upsert(updates);
 
-      // RELATIONAL SCORE REGISTRY SYNC (v9.5.8 Protocol)
       const activeMock = activeSettings.activeMock;
       const scoresPayload = activeStudents.flatMap(s => {
          const mockSet = s.mockData?.[activeMock];
@@ -137,7 +136,7 @@ const App: React.FC = () => {
           context_data: { status: 'COMMITTED', shards: scoresPayload.length, mock: activeMock }
       });
     } catch (e) {
-      console.warn("[CLOUD SYNC ERROR - LOCAL SHARD PRESERVED]", e);
+      console.warn("[CLOUD SYNC ERROR]", e);
     }
   };
 
@@ -229,12 +228,24 @@ const App: React.FC = () => {
     setLoggedInUser(user);
   };
 
+  const handleOnboardingComplete = async (hubId: string) => {
+    localStorage.setItem('uba_active_hub_id', hubId);
+    localStorage.setItem('uba_active_role', 'school_admin');
+    const user = { name: settings.registrantName || 'ADMIN', nodeId: hubId, role: 'school_admin', email: settings.registrantEmail };
+    localStorage.setItem('uba_user_context', JSON.stringify(user));
+    
+    setCurrentHubId(hubId);
+    setActiveRole('school_admin');
+    setLoggedInUser(user);
+    setIsRegistering(false);
+    await syncCloudShards(hubId);
+  };
+
   if (isInitializing || isSyncing) return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-12 animate-in fade-in duration-500">
       <div className="relative">
          <div className="w-32 h-32 border-8 border-blue-500/10 rounded-full"></div>
          <div className="absolute inset-0 w-32 h-32 border-8 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-         <div className="absolute inset-8 w-16 h-16 border-4 border-indigo-400 border-b-transparent rounded-full animate-[spin_2s_linear_infinite_reverse]"></div>
       </div>
       <p className="text-2xl font-black text-white uppercase tracking-[0.6em] animate-pulse">Syncing Academy Node</p>
     </div>
@@ -242,7 +253,22 @@ const App: React.FC = () => {
 
   if (!currentHubId && !isSuperAdmin) return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-      <LoginPortal onLoginSuccess={handleLoginTransition} onSuperAdminLogin={()=>{ setIsSuperAdmin(true); }} onSwitchToRegister={()=>{}} />
+      {isRegistering ? (
+        <SchoolRegistrationPortal 
+          settings={settings} 
+          onBulkUpdate={(u) => setSettings(prev => ({...prev, ...u}))}
+          onSave={handleSaveAll}
+          onComplete={handleOnboardingComplete}
+          onResetStudents={() => setStudents([])}
+          onSwitchToLogin={() => setIsRegistering(false)}
+        />
+      ) : (
+        <LoginPortal 
+          onLoginSuccess={handleLoginTransition} 
+          onSuperAdminLogin={() => setIsSuperAdmin(true)} 
+          onSwitchToRegister={() => setIsRegistering(true)} 
+        />
+      )}
     </div>
   );
 
