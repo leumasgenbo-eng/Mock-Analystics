@@ -33,7 +33,6 @@ export const getFinalCompositeScore = (
   if (!sbaConfig.enabled) return normalizedExam;
   
   // Standard NRT weighting: (SBA% of 100) + (Exam% of normalized exam)
-  // Ensure weights total 100. If missing, assume 100% exam.
   const sbaWeight = sbaConfig.sbaWeight || 0;
   const examWeight = sbaConfig.examWeight || (100 - sbaWeight);
   
@@ -86,7 +85,6 @@ export const calculateClassStatistics = (students: StudentData[], settings: Glob
       sectionAScores.push(subSc.sectionA || 0);
       sectionBScores.push(subSc.sectionB || 0);
       const examTotal = (subSc.sectionA || 0) + (subSc.sectionB || 0);
-      // Logic Fix: Prioritize sum of parts. Only fallback to scores[subject] if parts are strictly 0 but total exists.
       const actualExam = (examTotal === 0 && (mockData.scores[subject] || 0) > 0) ? mockData.scores[subject] : examTotal;
       return getFinalCompositeScore(actualExam, mockData.sbaScores[subject] || 0, settings.normalizationConfig, settings.sbaConfig, subject);
     });

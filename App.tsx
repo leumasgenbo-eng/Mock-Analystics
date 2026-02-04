@@ -88,6 +88,7 @@ const App: React.FC = () => {
     const hubId = activeSettings.schoolNumber || currentHubId;
     if (!hubId) return;
 
+    // Local mirror for instant UX
     localStorage.setItem(`uba_safety_shard_${hubId}`, JSON.stringify({
       settings: activeSettings,
       students: activeStudents,
@@ -105,6 +106,7 @@ const App: React.FC = () => {
       ];
       await supabase.from('uba_persistence').upsert(updates);
 
+      // Save granular scores for BI reporting
       const activeMock = activeSettings.activeMock;
       const scoresPayload = activeStudents.flatMap(s => {
          const mockSet = s.mockData?.[activeMock];
@@ -114,7 +116,7 @@ const App: React.FC = () => {
             student_id: s.indexNumber || s.id.toString(),
             mock_series: activeMock,
             subject,
-            total_score: mockSet.scores[subject],
+            total_score: (mockSet.examSubScores[subject]?.sectionA || 0) + (mockSet.examSubScores[subject]?.sectionB || 0),
             sba_score: mockSet.sbaScores[subject] || 0,
             section_a: mockSet.examSubScores[subject]?.sectionA || 0,
             section_b: mockSet.examSubScores[subject]?.sectionB || 0,
@@ -141,6 +143,7 @@ const App: React.FC = () => {
     if (!hubId) return null;
     setIsSyncing(true);
     try {
+      console.log(`[CLOUD HANDSHAKE] Requesting data for node: ${hubId}`);
       const { data: persistenceData } = await supabase
         .from('uba_persistence')
         .select('id, payload')
@@ -156,13 +159,16 @@ const App: React.FC = () => {
           if (row.id === `${hubId}_students`) finalStudents = row.payload;
           if (row.id === `${hubId}_facilitators`) finalFacilitators = row.payload;
         });
+        console.log(`[CLOUD HANDSHAKE] Successful restoration from uba_persistence.`);
       } else {
+        // Last resort: browser data
         const safety = localStorage.getItem(`uba_safety_shard_${hubId}`);
         if (safety) {
            const parsed = JSON.parse(safety);
            finalSettings = parsed.settings;
            finalStudents = parsed.students;
            finalFacilitators = parsed.facilitators;
+           console.log(`[CLOUD HANDSHAKE] WARNING: Cloud vault empty. Restoring from local safety shard.`);
         }
       }
 
@@ -182,19 +188,22 @@ const App: React.FC = () => {
   useEffect(() => {
     const initializeSystem = async () => {
       const storedUser = localStorage.getItem('uba_user_context');
-      if (storedUser) {
+      const storedHubId = localStorage.getItem('uba_active_hub_id');
+      
+      if (storedUser && storedHubId) {
         const user = JSON.parse(storedUser);
         setLoggedInUser(user);
         if (user.role === 'super_admin') {
           setIsSuperAdmin(true);
-        } else if (currentHubId) {
-          await syncCloudShards(currentHubId);
+        } else {
+          // CLOUD FURNISH PROTOCOL: Always fetch from Supabase on mount
+          await syncCloudShards(storedHubId);
         }
       }
       setIsInitializing(false);
     };
     initializeSystem();
-  }, [currentHubId, syncCloudShards]);
+  }, [syncCloudShards]);
 
   const { stats, processedStudents, classAvgAggregate } = useMemo(() => {
     const s = calculateClassStatistics(students, settings);
@@ -219,7 +228,10 @@ const App: React.FC = () => {
     localStorage.setItem('uba_active_hub_id', hubId);
     localStorage.setItem('uba_active_role', user.role);
     localStorage.setItem('uba_user_context', JSON.stringify(user));
+    
+    // Immediate cloud furnishing after gate handshake
     await syncCloudShards(hubId);
+    
     setCurrentHubId(hubId);
     setActiveRole(user.role);
     setLoggedInUser(user);
@@ -244,7 +256,10 @@ const App: React.FC = () => {
          <div className="w-32 h-32 border-8 border-blue-500/10 rounded-full"></div>
          <div className="absolute inset-0 w-32 h-32 border-8 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
-      <p className="text-2xl font-black text-white uppercase tracking-[0.6em] animate-pulse">Syncing Academy Node</p>
+      <div className="text-center space-y-2">
+         <p className="text-2xl font-black text-white uppercase tracking-[0.6em] animate-pulse">Syncing Academy Node</p>
+         <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Restoring State from Cloud Hub</p>
+      </div>
     </div>
   );
 
