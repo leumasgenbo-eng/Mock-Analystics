@@ -31,7 +31,13 @@ export const getFinalCompositeScore = (
 ): number => {
   const normalizedExam = getNormalizedScore(rawExam, subject, normConfig);
   if (!sbaConfig.enabled) return normalizedExam;
-  return (rawSba * (sbaConfig.sbaWeight / 100)) + (normalizedExam * (sbaConfig.examWeight / 100));
+  
+  // Standard NRT weighting: (SBA% of 100) + (Exam% of normalized exam)
+  // Ensure weights total 100. If missing, assume 100% exam.
+  const sbaWeight = sbaConfig.sbaWeight || 0;
+  const examWeight = sbaConfig.examWeight || (100 - sbaWeight);
+  
+  return (rawSba * (sbaWeight / 100)) + (normalizedExam * (examWeight / 100));
 };
 
 export const getGradeFromZScore = (score: number, mean: number, stdDev: number, thresholds: GradingThresholds): { grade: string, value: number, remark: string } => {
@@ -77,9 +83,10 @@ export const calculateClassStatistics = (students: StudentData[], settings: Glob
     const compositeScores = students.map(s => {
       const mockData = getStudentMockData(s, settings.activeMock);
       const subSc = mockData.examSubScores[subject] || { sectionA: 0, sectionB: 0 };
-      sectionAScores.push(subSc.sectionA);
-      sectionBScores.push(subSc.sectionB);
-      const examTotal = subSc.sectionA + subSc.sectionB;
+      sectionAScores.push(subSc.sectionA || 0);
+      sectionBScores.push(subSc.sectionB || 0);
+      const examTotal = (subSc.sectionA || 0) + (subSc.sectionB || 0);
+      // Logic Fix: Prioritize sum of parts. Only fallback to scores[subject] if parts are strictly 0 but total exists.
       const actualExam = (examTotal === 0 && (mockData.scores[subject] || 0) > 0) ? mockData.scores[subject] : examTotal;
       return getFinalCompositeScore(actualExam, mockData.sbaScores[subject] || 0, settings.normalizationConfig, settings.sbaConfig, subject);
     });
@@ -107,7 +114,7 @@ export const processStudentData = (stats: ClassStatistics, rawStudents: StudentD
 
     SUBJECT_LIST.forEach(subject => {
       const subSc = mockData.examSubScores[subject] || { sectionA: 0, sectionB: 0 };
-      const examTotal = subSc.sectionA + subSc.sectionB;
+      const examTotal = (subSc.sectionA || 0) + (subSc.sectionB || 0);
       const actualExam = (examTotal === 0 && (mockData.scores[subject] || 0) > 0) ? mockData.scores[subject] : examTotal;
       const compositeScore = getFinalCompositeScore(actualExam, mockData.sbaScores[subject] || 0, settings.normalizationConfig, settings.sbaConfig, subject);
       totalScore += compositeScore;
@@ -125,8 +132,8 @@ export const processStudentData = (stats: ClassStatistics, rawStudents: StudentD
         remark, 
         facilitator: facilitators[subject] || 'TBA',
         zScore: stdDev === 0 ? 0 : (compositeScore - mean) / stdDev,
-        sectionA: subSc.sectionA,
-        sectionB: subSc.sectionB
+        sectionA: subSc.sectionA || 0,
+        sectionB: subSc.sectionB || 0
       });
     });
 
@@ -142,7 +149,6 @@ export const processStudentData = (stats: ClassStatistics, rawStudents: StudentD
     const foundCategory = settings.categoryThresholds.find(t => bestSixAggregate >= t.min && bestSixAggregate <= t.max);
     if (foundCategory) category = foundCategory.label;
 
-    // Fix: Added missing 'email' property to map StudentData to ProcessedStudent
     return { 
       id: student.id, 
       name: student.name, 
@@ -202,7 +208,6 @@ export const generateFullDemoSuite = (): {
         mockSnapshots[mock] = {
             submissionDate: mock === 'MOCK 1' ? '2025-01-15' : '2025-02-10',
             subjectsSubmitted: SUBJECT_LIST,
-            // Fix: Added missing properties for audit tracking
             subjectSubmissionDates: SUBJECT_LIST.reduce((acc, sub) => ({ ...acc, [sub]: mock === 'MOCK 1' ? '2025-01-15' : '2025-02-10' }), {}),
             confirmedScripts: ["KWAME MENSAH", "ABENA OSEI", "KOFI ADU"],
             approvalStatus: 'completed',
@@ -248,7 +253,6 @@ export const generateFullDemoSuite = (): {
               aggregate: mockBestAgg,
               rank: [1, 2, 3, 4, 5][sIdx],
               date: mock === 'MOCK 1' ? '2025-01-20' : '2025-02-15',
-              // Fix: Added missing properties for audit tracking
               reviewStatus: 'complete',
               isApproved: true,
               subScores: examSubScores
@@ -268,7 +272,6 @@ export const generateFullDemoSuite = (): {
     name: "CULBURY ACADEMY",
     registrant: "ADMINISTRATOR",
     registrantEmail: "admin@culbury.edu",
-    // Fix: Added missing properties accessCode, staffAccessCode and pupilAccessCode
     accessCode: "SSMAP-HQ-SECURE",
     staffAccessCode: "SSMAP-STAFF-DEMO",
     pupilAccessCode: "SSMAP-PUPIL-DEMO",

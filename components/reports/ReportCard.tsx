@@ -145,8 +145,9 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
                       <th className="px-4 text-left">Academic Discipline</th>
                       <th className="px-1 text-center w-[20px]">Obj</th>
                       <th className="px-1 text-center w-[20px]">Thy</th>
+                      <th className="px-1 text-center w-[30px] bg-blue-900/50">Exam (A+B)</th>
                       <th className="px-1 text-center w-[20px]">SBA</th>
-                      <th className="px-1 text-center w-[25px] bg-blue-800">Total</th>
+                      <th className="px-1 text-center w-[30px] bg-blue-800">Composite</th>
                       <th className="px-1 text-center w-[25px]">Grd</th>
                       <th className="px-4 text-left">Instructional Remark Shard</th>
                     </tr>
@@ -155,8 +156,9 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
                      {student.subjects.map(sub => (
                        <tr key={sub.subject} className="even:bg-blue-50/5 font-bold h-[18px]">
                          <td className="px-4 py-[1px] text-blue-950 uppercase truncate max-w-[150px] text-[8.5px] border-r border-gray-50">{sub.subject}</td>
-                         <td className="py-[1px] px-1 text-center font-mono text-gray-400 text-[9px] border-r border-gray-50">{sub.sectionA ?? '—'}</td>
-                         <td className="py-[1px] px-1 text-center font-mono text-gray-400 text-[9px] border-r border-gray-50">{sub.sectionB ?? '—'}</td>
+                         <td className="py-[1px] px-1 text-center font-mono text-gray-400 text-[9px] border-r border-gray-50">{sub.sectionA ?? '0'}</td>
+                         <td className="py-[1px] px-1 text-center font-mono text-gray-400 text-[9px] border-r border-gray-50">{sub.sectionB ?? '0'}</td>
+                         <td className="py-[1px] px-1 text-center font-black bg-slate-50 text-blue-900 text-[9px] border-r border-gray-50">{(sub.sectionA || 0) + (sub.sectionB || 0)}</td>
                          <td className="py-[1px] px-1 text-center font-mono text-gray-400 text-[9px] border-r border-gray-50">{Math.round(sub.sbaScore)}</td>
                          <td className="py-[1px] px-1 text-center font-black bg-blue-50/30 text-blue-900 text-[9px] border-r border-gray-100">{Math.round(sub.finalCompositeScore)}</td>
                          <td className={`py-[1px] px-1 text-center font-black text-[9.5px] border-r border-gray-100 ${sub.gradeValue >= 7 ? 'text-red-700' : 'text-blue-900'}`}>{sub.grade}</td>

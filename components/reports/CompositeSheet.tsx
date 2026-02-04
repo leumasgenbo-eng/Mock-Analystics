@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ProcessedStudent, ClassStatistics, GlobalSettings, StaffAssignment } from '../../types';
 import { SUBJECT_LIST } from '../../constants';
@@ -54,7 +55,8 @@ const CompositeSheet: React.FC<CompositeSheetProps> = ({ students, stats, settin
               {SUBJECT_LIST.map(sub => (
                 <th key={sub} className="p-2 border-r border-blue-900" colSpan={2}>{sub.substring(0, 12)}</th>
               ))}
-              <th className="p-2 bg-red-700 font-black">Total</th>
+              <th className="p-2 bg-slate-800 font-black">Exam (A+B)</th>
+              <th className="p-2 bg-red-700 font-black">Composite</th>
               <th className="p-2 bg-red-800 font-black">Agg</th>
             </tr>
           </thead>
@@ -72,6 +74,9 @@ const CompositeSheet: React.FC<CompositeSheetProps> = ({ students, stats, settin
                     </React.Fragment>
                   );
                 })}
+                <td className="p-2 text-center font-black bg-slate-50 text-slate-500 border-r border-gray-100">
+                  {Math.round(student.subjects.reduce((sum, s) => sum + (s.score || 0), 0) / (student.subjects.length || 1))}
+                </td>
                 <td className="p-2 text-center font-black bg-gray-50 text-blue-900 border-r border-gray-100">{Math.round(student.totalScore)}</td>
                 <td className="p-2 text-center font-black text-red-700 bg-red-50">{student.bestSixAggregate}</td>
               </tr>
@@ -85,16 +90,7 @@ const CompositeSheet: React.FC<CompositeSheetProps> = ({ students, stats, settin
                    {Math.round(stats.subjectMeans[sub] || 0)}%
                 </td>
               ))}
-              <td colSpan={2} className="bg-blue-100"></td>
-            </tr>
-            <tr className="bg-indigo-50/50">
-              <td colSpan={2} className="p-3 text-right bg-indigo-50 text-indigo-900 tracking-widest border-r border-indigo-100">Std Deviation (σ)</td>
-              {SUBJECT_LIST.map(sub => (
-                <td key={sub + '-std'} colSpan={2} className="p-2 text-center text-indigo-600 font-mono text-[10px] border-r border-indigo-50">
-                   {(stats.subjectStdDevs[sub] || 0).toFixed(2)}
-                </td>
-              ))}
-              <td colSpan={2} className="bg-indigo-50"></td>
+              <td colSpan={3} className="bg-blue-100"></td>
             </tr>
           </tfoot>
         </table>
@@ -142,96 +138,6 @@ const CompositeSheet: React.FC<CompositeSheetProps> = ({ students, stats, settin
           ))}
         </div>
       </section>
-
-      {/* Formulas & Interpretations Section - HIDDEN FOR FACILITATORS */}
-      {!isFacilitator && (
-        <div className="bg-slate-900 text-slate-100 p-10 rounded-[4rem] shadow-2xl border border-slate-800 space-y-12 page-break-inside-avoid print:bg-slate-50 print:text-slate-900 print:border-gray-300 print:rounded-3xl">
-           <div className="text-center space-y-2">
-              <h3 className="text-2xl font-black uppercase tracking-tighter text-blue-400 print:text-blue-900">Mathematical Model & Performance Formulas</h3>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em]">ACADEMY ANALYTICAL STANDARDS</p>
-           </div>
-
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
-              {/* Z-Score Formula */}
-              <div className="space-y-4">
-                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-blue-500/20 text-blue-400 rounded-lg flex items-center justify-center font-black text-sm print:bg-blue-100 print:text-blue-700">Z</div>
-                    <h4 className="text-[11px] font-black uppercase tracking-widest">T Rank (Z-Score)</h4>
-                 </div>
-                 <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center print:bg-white print:border-gray-200">
-                    <code className="text-lg font-mono font-black text-white print:text-blue-900">Z = (x - μ) / σ</code>
-                 </div>
-                 <p className="text-[9px] text-slate-400 leading-relaxed italic print:text-gray-500">
-                   Calculates the relative distance of score <strong>(x)</strong> from the class mean <strong>(μ)</strong>. It provides the statistical rank of a student relative to the cohort's overall spread.
-                 </p>
-              </div>
-
-              {/* Standard Deviation Formula */}
-              <div className="space-y-4">
-                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-emerald-500/20 text-emerald-400 rounded-lg flex items-center justify-center font-black text-sm print:bg-emerald-100 print:text-emerald-700">σ</div>
-                    <h4 className="text-[11px] font-black uppercase tracking-widest">Std. Deviation</h4>
-                 </div>
-                 <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center print:bg-white print:border-gray-200">
-                    <code className="text-lg font-mono font-black text-white print:text-blue-900">σ = √[Σ(x-μ)² / N]</code>
-                 </div>
-                 <p className="text-[9px] text-slate-400 leading-relaxed italic print:text-gray-500">
-                   Determines the consistency of scores within the cohort. Low σ indicates high uniform absorption of the examined concepts.
-                 </p>
-              </div>
-
-              {/* QPR Formula */}
-              <div className="space-y-4">
-                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-indigo-500/20 text-indigo-400 rounded-lg flex items-center justify-center font-black text-sm print:bg-indigo-100 print:text-indigo-700">%</div>
-                    <h4 className="text-[11px] font-black uppercase tracking-widest">Quality Pass Rate</h4>
-                 </div>
-                 <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center print:bg-white print:border-gray-200">
-                    <code className="text-lg font-mono font-black text-white print:text-blue-900">QPR = (P₁₋₆ / N) * 100</code>
-                 </div>
-                 <p className="text-[9px] text-slate-400 leading-relaxed italic print:text-gray-500">
-                   Percentage of pupils achieving Merit or better (Aggregates 1-6) in the examined subject area.
-                 </p>
-              </div>
-
-              {/* SVI Formula */}
-              <div className="space-y-4">
-                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-red-500/20 text-red-400 rounded-lg flex items-center justify-center font-black text-sm print:bg-red-100 print:text-red-700">V</div>
-                    <h4 className="text-[11px] font-black uppercase tracking-widest">Vitality Index (SVI)</h4>
-                 </div>
-                 <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center print:bg-white print:border-gray-200">
-                    <code className="text-[13px] font-mono font-black text-white print:text-blue-900">SVI = 0.4μ + 0.4Q + 0.2C</code>
-                 </div>
-                 <p className="text-[9px] text-slate-400 leading-relaxed italic print:text-gray-500">
-                   Composite index weighting Mean <strong>(μ)</strong>, Quality <strong>(Q)</strong>, and Consistency <strong>(C)</strong> to rank institutional efficiency.
-                 </p>
-              </div>
-           </div>
-
-           <div className="pt-8 border-t border-white/5 grid grid-cols-1 lg:grid-cols-2 gap-12 print:border-gray-200">
-              <div className="space-y-3">
-                 <h5 className="text-[10px] font-black text-blue-400 uppercase tracking-widest print:text-blue-900">Interpreting Deviation (σ)</h5>
-                 <ul className="space-y-2">
-                    <li className="text-[9px] text-slate-300 flex gap-2 print:text-gray-600">
-                      <span className="text-emerald-400 font-bold">●</span>
-                      <span><strong>Low σ (&lt; 10):</strong> Indicates uniform learning outcomes across the cohort; concept mastery is consistent.</span>
-                    </li>
-                    <li className="text-[9px] text-slate-300 flex gap-2 print:text-gray-600">
-                      <span className="text-red-400 font-bold">●</span>
-                      <span><strong>High σ (&gt; 15):</strong> Indicates extreme learning gaps; remedial action is required for lower-tier students.</span>
-                    </li>
-                 </ul>
-              </div>
-              <div className="space-y-3">
-                 <h5 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest print:text-indigo-900">NRT Ranking Logic</h5>
-                 <p className="text-[9px] text-slate-300 leading-relaxed font-medium italic print:text-gray-600">
-                   The <strong>NRT System</strong> ensures that grades reflect the pupil's position within the local group context. Grades are derived from Z-score thresholds applied to the <strong>Normal Distribution Curve</strong>. This means pupils are measured against the actual difficulty experienced by their peers.
-                 </p>
-              </div>
-           </div>
-        </div>
-      )}
     </div>
   );
 };
