@@ -80,6 +80,10 @@ const App: React.FC = () => {
     stateRef.current = { settings, students, facilitators };
   }, [settings, students, facilitators]);
 
+  /**
+   * REFINED CLOUD SYNC ENGINE
+   * Accepts optional overrides to bypass React state lag.
+   */
   const handleSaveAll = async (overrides?: { settings?: GlobalSettings, students?: StudentData[], facilitators?: Record<string, StaffAssignment> }) => {
     const activeSettings = overrides?.settings || stateRef.current.settings;
     const activeStudents = overrides?.students || stateRef.current.students;
@@ -88,7 +92,7 @@ const App: React.FC = () => {
     const hubId = activeSettings.schoolNumber || currentHubId;
     if (!hubId) return;
 
-    // Local mirror for instant UX
+    // 1. Local Mirror Sharding
     localStorage.setItem(`uba_safety_shard_${hubId}`, JSON.stringify({
       settings: activeSettings,
       students: activeStudents,
@@ -99,6 +103,7 @@ const App: React.FC = () => {
     try {
       const timestamp = new Date().toISOString();
       
+      // 2. Persistence Upsert (Full State)
       const updates = [
         { id: `${hubId}_settings`, hub_id: hubId, payload: activeSettings, last_updated: timestamp },
         { id: `${hubId}_students`, hub_id: hubId, payload: activeStudents, last_updated: timestamp },
@@ -106,7 +111,7 @@ const App: React.FC = () => {
       ];
       await supabase.from('uba_persistence').upsert(updates);
 
-      // Save granular scores for BI reporting
+      // 3. Granular Score Sync (BI Analytics)
       const activeMock = activeSettings.activeMock;
       const scoresPayload = activeStudents.flatMap(s => {
          const mockSet = s.mockData?.[activeMock];
@@ -120,14 +125,16 @@ const App: React.FC = () => {
             sba_score: mockSet.sbaScores[subject] || 0,
             section_a: mockSet.examSubScores[subject]?.sectionA || 0,
             section_b: mockSet.examSubScores[subject]?.sectionB || 0,
-            academic_year: activeSettings.academicYear
+            academic_year: activeSettings.academicYear || "2024/2025"
          }));
       });
 
       if (scoresPayload.length > 0) {
-         await supabase.from('uba_mock_scores').upsert(scoresPayload);
+         const { error } = await supabase.from('uba_mock_scores').upsert(scoresPayload);
+         if (error) console.error("[BI SYNC ERROR]", error);
       }
 
+      // 4. Audit Logging
       await supabase.from('uba_activity_logs').insert({
           node_id: hubId,
           staff_id: loggedInUser?.email || 'SYSTEM_AUTO',
@@ -143,7 +150,6 @@ const App: React.FC = () => {
     if (!hubId) return null;
     setIsSyncing(true);
     try {
-      console.log(`[CLOUD HANDSHAKE] Requesting data for node: ${hubId}`);
       const { data: persistenceData } = await supabase
         .from('uba_persistence')
         .select('id, payload')
@@ -159,16 +165,13 @@ const App: React.FC = () => {
           if (row.id === `${hubId}_students`) finalStudents = row.payload;
           if (row.id === `${hubId}_facilitators`) finalFacilitators = row.payload;
         });
-        console.log(`[CLOUD HANDSHAKE] Successful restoration from uba_persistence.`);
       } else {
-        // Last resort: browser data
         const safety = localStorage.getItem(`uba_safety_shard_${hubId}`);
         if (safety) {
            const parsed = JSON.parse(safety);
            finalSettings = parsed.settings;
            finalStudents = parsed.students;
            finalFacilitators = parsed.facilitators;
-           console.log(`[CLOUD HANDSHAKE] WARNING: Cloud vault empty. Restoring from local safety shard.`);
         }
       }
 
@@ -196,7 +199,6 @@ const App: React.FC = () => {
         if (user.role === 'super_admin') {
           setIsSuperAdmin(true);
         } else {
-          // CLOUD FURNISH PROTOCOL: Always fetch from Supabase on mount
           await syncCloudShards(storedHubId);
         }
       }
@@ -228,10 +230,7 @@ const App: React.FC = () => {
     localStorage.setItem('uba_active_hub_id', hubId);
     localStorage.setItem('uba_active_role', user.role);
     localStorage.setItem('uba_user_context', JSON.stringify(user));
-    
-    // Immediate cloud furnishing after gate handshake
     await syncCloudShards(hubId);
-    
     setCurrentHubId(hubId);
     setActiveRole(user.role);
     setLoggedInUser(user);
@@ -242,7 +241,6 @@ const App: React.FC = () => {
     localStorage.setItem('uba_active_role', 'school_admin');
     const user = { name: settings.registrantName || 'ADMIN', nodeId: hubId, role: 'school_admin', email: settings.registrantEmail };
     localStorage.setItem('uba_user_context', JSON.stringify(user));
-    
     setCurrentHubId(hubId);
     setActiveRole('school_admin');
     setLoggedInUser(user);
@@ -251,7 +249,7 @@ const App: React.FC = () => {
   };
 
   if (isInitializing || isSyncing) return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-12 animate-in fade-in duration-500">
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-12">
       <div className="relative">
          <div className="w-32 h-32 border-8 border-blue-500/10 rounded-full"></div>
          <div className="absolute inset-0 w-32 h-32 border-8 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
@@ -269,7 +267,7 @@ const App: React.FC = () => {
         <SchoolRegistrationPortal 
           settings={settings} 
           onBulkUpdate={(u) => setSettings(prev => ({...prev, ...u}))}
-          onSave={handleSaveAll}
+          onSave={() => handleSaveAll()}
           onComplete={handleOnboardingComplete}
           onResetStudents={() => setStudents([])}
           onSwitchToLogin={() => setIsRegistering(false)}
@@ -308,7 +306,24 @@ const App: React.FC = () => {
             {processedStudents.filter(s=>(s.name||"").toLowerCase().includes(reportSearchTerm.toLowerCase())).map(s=><ReportCard key={s.id} student={s} stats={stats} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); handleSaveAll({settings:next}); }} classAverageAggregate={classAvgAggregate} totalEnrolled={processedStudents.length} isFacilitator={activeRole === 'facilitator'} loggedInUser={loggedInUser} />)}
           </div>
         )}
-        {viewMode==='management' && <ManagementDesk students={students} setStudents={setStudents} facilitators={facilitators} setFacilitators={setFacilitators} subjects={SUBJECT_LIST} settings={settings} onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} onBulkUpdate={(u)=>{ const next={...settings,...u}; setSettings(next); handleSaveAll({settings:next}); }} onSave={handleSaveAll} processedSnapshot={processedStudents} onLoadDummyData={()=>{}} onClearData={()=>{}} isFacilitator={activeRole === 'facilitator'} loggedInUser={loggedInUser} />}
+        {viewMode==='management' && (
+          <ManagementDesk 
+            students={students} 
+            setStudents={setStudents} 
+            facilitators={facilitators} 
+            setFacilitators={setFacilitators} 
+            subjects={SUBJECT_LIST} 
+            settings={settings} 
+            onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} 
+            onBulkUpdate={(u)=>{ const next={...settings,...u}; setSettings(next); handleSaveAll({settings:next}); }} 
+            onSave={(ov)=>handleSaveAll(ov)} 
+            processedSnapshot={processedStudents} 
+            onLoadDummyData={()=>{}} 
+            onClearData={()=>{}} 
+            isFacilitator={activeRole === 'facilitator'} 
+            loggedInUser={loggedInUser} 
+          />
+        )}
       </div>
     </div>
   );

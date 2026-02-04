@@ -10,7 +10,7 @@ interface ScoreEntryPortalProps {
   onSettingChange: (key: keyof GlobalSettings, value: any) => void;
   subjects: string[];
   processedSnapshot: ProcessedStudent[];
-  onSave: () => void;
+  onSave: (overrides?: any) => void;
   activeFacilitator?: { name: string; subject: string } | null;
 }
 
@@ -43,7 +43,7 @@ const ScoreEntryPortal: React.FC<ScoreEntryPortalProps> = ({
   };
 
   const handleClearSubjectScore = (studentId: number) => {
-    if (!window.confirm(`NULLIFY SHARD: Reset ${selectedSubject} scores to zero for this candidate? This will update the local buffer.`)) return;
+    if (!window.confirm(`NULLIFY SHARD: Reset ${selectedSubject} scores to zero for this candidate?`)) return;
     
     setStudents(prev => prev.map(s => {
       if (s.id !== studentId) return s;
@@ -87,6 +87,11 @@ const ScoreEntryPortal: React.FC<ScoreEntryPortalProps> = ({
         } 
       };
     }));
+  };
+
+  const handleCommitCalibration = () => {
+    onSave({ students: students });
+    alert("Assessments modulated and synchronized with Global Hub.");
   };
 
   const filtered = students.filter(s => (s.name || "").toLowerCase().includes(searchTerm.toLowerCase()));
@@ -171,7 +176,7 @@ const ScoreEntryPortal: React.FC<ScoreEntryPortalProps> = ({
                <span className="text-sm font-black text-blue-950 uppercase">{filtered.length} Shards Ready</span>
             </div>
          </div>
-         <button onClick={() => { onSave(); alert("Assessments modulated and synchronized with local persistence."); }} className="bg-blue-950 text-white px-12 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.2em] shadow-2xl active:scale-95 transition-all hover:bg-black">Commit Calibration</button>
+         <button onClick={handleCommitCalibration} className="bg-blue-950 text-white px-12 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.2em] shadow-2xl active:scale-95 transition-all hover:bg-black">Commit Calibration</button>
       </div>
     </div>
   );
