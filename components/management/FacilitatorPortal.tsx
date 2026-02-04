@@ -10,7 +10,7 @@ interface FacilitatorPortalProps {
   settings: GlobalSettings;
   onSave: (overrides?: any) => void;
   isFacilitator?: boolean;
-  activeFacilitator?: { name: string; subject: string } | null;
+  activeFacilitator?: { name: string; subject: string; email?: string } | null;
 }
 
 const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({ 
@@ -256,11 +256,11 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
               <form onSubmit={handleAddOrUpdateStaff} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                  <div className="space-y-1">
                    <label className="text-[8px] font-black text-slate-500 uppercase ml-2 tracking-widest">Legal Identity</label>
-                   <input type="text" value={newStaff.name} onChange={e=>setNewStaff({...newStaff, name: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="FULL NAME..." required />
+                   <input type="text" value={newStaff.name} onChange={e=>setNewStaff({...newStaff, name: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-sm font-black uppercase outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="FULL NAME..." required />
                  </div>
                  <div className="space-y-1">
                    <label className="text-[8px] font-black text-slate-500 uppercase ml-2 tracking-widest">Official Email</label>
-                   <input type="email" value={newStaff.email} onChange={e=>setNewStaff({...newStaff, email: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="OFFICIAL@ACADEMY.COM" required />
+                   <input type="email" value={newStaff.email} onChange={e=>setNewStaff({...newStaff, email: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-sm font-black outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="OFFICIAL@ACADEMY.COM" required />
                  </div>
                  <div className="space-y-1">
                    <label className="text-[8px] font-black text-slate-500 uppercase ml-2 tracking-widest">Primary Discipline</label>
@@ -314,21 +314,57 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                </div>
                {isExpanded && (
                   <div className="px-10 pb-10 pt-4 bg-slate-50 border-t border-gray-100 animate-in slide-in-from-top-2">
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                         {f.invigilations.map((slot, sIdx) => (
-                           <div key={sIdx} className="bg-white p-6 rounded-[2rem] border border-gray-200 space-y-3 shadow-sm">
-                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Invigilation Slot {sIdx + 1}</label>
-                              <div className="space-y-2">
-                                 <input type="date" value={slot.dutyDate} className="w-full text-xs font-bold text-blue-900 outline-none bg-slate-50 px-3 py-2 rounded-xl" onChange={(e) => {
-                                    const next = {...facilitators};
-                                    next[f.email].invigilations[sIdx].dutyDate = e.target.value;
-                                    setFacilitators(next);
-                                 }} />
-                                 <input type="text" placeholder="Subject/Series" value={slot.subject} className="w-full text-xs font-black uppercase outline-none bg-slate-50 px-3 py-2 rounded-xl placeholder:opacity-30" onChange={(e) => {
-                                    const next = {...facilitators};
-                                    next[f.email].invigilations[sIdx].subject = e.target.value.toUpperCase();
-                                    setFacilitators(next);
-                                 }} />
+                           <div key={sIdx} className="bg-white p-6 rounded-[2rem] border border-gray-200 space-y-4 shadow-sm hover:border-blue-400 transition-colors">
+                              <div className="flex justify-between items-center border-b border-gray-100 pb-2">
+                                 <label className="text-[9px] font-black text-blue-950 uppercase tracking-widest">Invigilation Slot {sIdx + 1}</label>
+                                 <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                 <div className="space-y-1">
+                                    <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest block ml-1">Duty Date</label>
+                                    <input 
+                                       type="date" 
+                                       value={slot.dutyDate} 
+                                       className="w-full text-[10px] font-bold text-blue-900 outline-none bg-slate-50 px-3 py-2.5 rounded-xl border border-gray-100 focus:border-blue-400" 
+                                       onChange={(e) => {
+                                          const next = {...facilitators};
+                                          next[f.email].invigilations[sIdx].dutyDate = e.target.value;
+                                          setFacilitators(next);
+                                       }} 
+                                    />
+                                 </div>
+                                 <div className="space-y-1">
+                                    <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest block ml-1">Time Slot</label>
+                                    <input 
+                                       type="text" 
+                                       placeholder="e.g. 09:00 - 11:30"
+                                       value={slot.timeSlot} 
+                                       className="w-full text-[10px] font-bold text-blue-900 outline-none bg-slate-50 px-3 py-2.5 rounded-xl border border-gray-100 focus:border-blue-400" 
+                                       onChange={(e) => {
+                                          const next = {...facilitators};
+                                          next[f.email].invigilations[sIdx].timeSlot = e.target.value.toUpperCase();
+                                          setFacilitators(next);
+                                       }} 
+                                    />
+                                 </div>
+                              </div>
+                              <div className="space-y-1">
+                                 <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest block ml-1">Exam Discipline / Series</label>
+                                 <select 
+                                    value={slot.subject} 
+                                    className="w-full text-[10px] font-black uppercase outline-none bg-slate-50 px-3 py-2.5 rounded-xl border border-gray-100 focus:border-blue-400 text-blue-900" 
+                                    onChange={(e) => {
+                                       const next = {...facilitators};
+                                       next[f.email].invigilations[sIdx].subject = e.target.value;
+                                       setFacilitators(next);
+                                    }}
+                                 >
+                                    <option value="">— SELECT SUBJECT —</option>
+                                    {subjects.map(s => <option key={s} value={s}>{s}</option>)}
+                                    <option value="GENERAL MOCK">GENERAL MOCK SESSION</option>
+                                 </select>
                               </div>
                            </div>
                         ))}
