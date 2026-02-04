@@ -37,7 +37,7 @@ const SeriesBroadSheet: React.FC<SeriesBroadSheetProps> = ({ students, settings,
 
   return (
     <div className="bg-white p-6 print:p-0 min-h-screen max-w-full font-sans">
-      {/* 1. Editable Academy Particulars - Standard Branding */}
+      {/* Unified Branding Header - Ensuring fully editable United Baylor particulars */}
       <ReportBrandingHeader 
         settings={settings} 
         onSettingChange={onSettingChange} 
@@ -53,7 +53,7 @@ const SeriesBroadSheet: React.FC<SeriesBroadSheetProps> = ({ students, settings,
          </div>
       </div>
 
-      {/* 2. Longitudinal Data Matrix */}
+      {/* Longitudinal Data Matrix */}
       <div className="shadow-2xl border border-gray-200 rounded-[2.5rem] bg-white overflow-hidden relative group">
         <div className="overflow-x-auto custom-scrollbar-horizontal scroll-smooth">
           <table className="w-full text-[10px] border-collapse min-w-[1200px]">
@@ -117,7 +117,6 @@ const SeriesBroadSheet: React.FC<SeriesBroadSheetProps> = ({ students, settings,
         </div>
       </div>
 
-      {/* 3. Formal Authentication Signatures - Editable Role Titles */}
       <div className="flex justify-between items-end pt-12 pb-4 border-t-2 border-blue-900 mt-12 page-break-inside-avoid">
          <div className="flex flex-col items-center">
             <div className="w-48 border-t-2 border-gray-900 text-center font-black uppercase text-[10px] pt-2">

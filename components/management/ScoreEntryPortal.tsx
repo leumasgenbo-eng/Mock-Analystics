@@ -21,7 +21,15 @@ const ScoreEntryPortal: React.FC<ScoreEntryPortalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
 
   const handleUpdateScore = (studentId: number, section: 'sectionA' | 'sectionB', value: string) => {
-    const numericVal = Math.min(100, Math.max(0, parseInt(value) || 0));
+    const maxLimit = section === 'sectionA' ? settings.maxSectionA : settings.maxSectionB;
+    let numericVal = parseInt(value) || 0;
+    
+    // Threshold Enforcement Shard
+    if (numericVal > maxLimit) {
+      numericVal = maxLimit;
+    }
+    numericVal = Math.max(0, numericVal);
+
     setStudents(prev => prev.map(s => {
       if (s.id !== studentId) return s;
       const mockSet = s.mockData?.[settings.activeMock] || { scores: {}, sbaScores: {}, examSubScores: {}, facilitatorRemarks: {}, observations: { facilitator: "", invigilator: "", examiner: "" }, attendance: 0, conductRemark: "" };
@@ -137,16 +145,28 @@ const ScoreEntryPortal: React.FC<ScoreEntryPortalProps> = ({
 
                   <div className="grid grid-cols-3 gap-4">
                      <div className="space-y-2">
-                        <label className="text-[8px] font-black text-gray-400 uppercase text-center block tracking-widest font-mono">OBJ</label>
-                        <input type="number" value={subSc.sectionA} onChange={e => handleUpdateScore(student.id, 'sectionA', e.target.value)} className="w-full bg-slate-50 border-2 border-gray-100 rounded-2xl py-4 text-center font-black text-blue-900 text-xl outline-none focus:border-blue-500 transition-colors" />
+                        <label className="text-[8px] font-black text-gray-400 uppercase text-center block tracking-widest font-mono">OBJ / {settings.maxSectionA}</label>
+                        <input 
+                          type="number" 
+                          max={settings.maxSectionA}
+                          value={subSc.sectionA} 
+                          onChange={e => handleUpdateScore(student.id, 'sectionA', e.target.value)} 
+                          className="w-full bg-slate-50 border-2 border-gray-100 rounded-2xl py-4 text-center font-black text-blue-900 text-xl outline-none focus:border-blue-500 transition-colors" 
+                        />
                      </div>
                      <div className="space-y-2">
-                        <label className="text-[8px] font-black text-gray-400 uppercase text-center block tracking-widest font-mono">THY</label>
-                        <input type="number" value={subSc.sectionB} onChange={e => handleUpdateScore(student.id, 'sectionB', e.target.value)} className="w-full bg-slate-50 border-2 border-gray-100 rounded-2xl py-4 text-center font-black text-blue-900 text-xl outline-none focus:border-blue-500 transition-colors" />
+                        <label className="text-[8px] font-black text-gray-400 uppercase text-center block tracking-widest font-mono">THY / {settings.maxSectionB}</label>
+                        <input 
+                          type="number" 
+                          max={settings.maxSectionB}
+                          value={subSc.sectionB} 
+                          onChange={e => handleUpdateScore(student.id, 'sectionB', e.target.value)} 
+                          className="w-full bg-slate-50 border-2 border-gray-100 rounded-2xl py-4 text-center font-black text-blue-900 text-xl outline-none focus:border-blue-500 transition-colors" 
+                        />
                      </div>
                      <div className="space-y-2">
-                        <label className="text-[8px] font-black text-blue-600 uppercase text-center block tracking-widest font-mono">SUM</label>
-                        <div className="w-full bg-blue-950 text-white rounded-2xl py-4 text-center font-black text-2xl h-[60px] flex items-center justify-center shadow-lg">{subSc.sectionA + subSc.sectionB}</div>
+                        <label className="text-[8px] font-black text-blue-600 uppercase text-center block tracking-widest font-mono">TOTAL</label>
+                        <div className={`w-full ${subSc.sectionA + subSc.sectionB > 100 ? 'bg-red-600' : 'bg-blue-950'} text-white rounded-2xl py-4 text-center font-black text-2xl h-[60px] flex items-center justify-center shadow-lg transition-colors`}>{subSc.sectionA + subSc.sectionB}</div>
                      </div>
                   </div>
 

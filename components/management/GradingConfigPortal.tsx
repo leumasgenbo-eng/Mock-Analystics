@@ -41,6 +41,46 @@ const GradingConfigPortal: React.FC<GradingConfigPortalProps> = ({ settings, onS
   return (
     <div className="space-y-8 animate-in fade-in duration-300 pb-10">
       
+      {/* Assessment Component Thresholds */}
+      <section className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+        <div className="bg-amber-50/50 px-6 py-4 border-b border-amber-100 flex items-center gap-2">
+           <div className="w-2 h-2 bg-amber-600 rounded-full"></div>
+           <h3 className="text-[10px] font-black text-amber-900 uppercase tracking-widest">Component Weighting Thresholds</h3>
+        </div>
+        <div className="p-6">
+           <p className="text-[11px] text-gray-500 font-medium mb-6">Define the maximum allowed raw scores for Objective and Theory papers. The system enforces these during score entry.</p>
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                 <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Objective (Section A) Max Shard</label>
+                 <input 
+                   type="number" 
+                   value={settings.maxSectionA} 
+                   onChange={(e) => onSettingChange('maxSectionA', parseInt(e.target.value) || 0)}
+                   className="w-full bg-slate-50 border border-gray-100 rounded-xl px-4 py-3 text-lg font-black text-blue-900 outline-none focus:ring-4 focus:ring-amber-500/10"
+                 />
+              </div>
+              <div className="space-y-2">
+                 <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Theory (Section B) Max Shard</label>
+                 <input 
+                   type="number" 
+                   value={settings.maxSectionB} 
+                   onChange={(e) => onSettingChange('maxSectionB', parseInt(e.target.value) || 0)}
+                   className="w-full bg-slate-50 border border-gray-100 rounded-xl px-4 py-3 text-lg font-black text-blue-900 outline-none focus:ring-4 focus:ring-amber-500/10"
+                 />
+              </div>
+           </div>
+           <div className="mt-4 p-4 rounded-2xl bg-slate-900 text-white flex justify-between items-center shadow-lg border border-white/5">
+              <div className="flex flex-col">
+                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Composite Calibration Total</span>
+                 <span className="text-[7px] text-slate-600 uppercase font-bold italic">Should ideally total 100 for standard NRT efficiency</span>
+              </div>
+              <span className={`text-2xl font-black font-mono ${settings.maxSectionA + settings.maxSectionB === 100 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {settings.maxSectionA + settings.maxSectionB}%
+              </span>
+           </div>
+        </div>
+      </section>
+
       {/* Report Template Selection */}
       <section className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
         <div className="bg-indigo-50/50 px-6 py-4 border-b border-indigo-100 flex items-center gap-2">
@@ -216,7 +256,7 @@ const GradingConfigPortal: React.FC<GradingConfigPortalProps> = ({ settings, onS
 
       {/* NRT Grading Cut-offs */}
       <section className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
-        <div className="bg-blue-50/50 px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="bg-blue-50/50 px-6 py-4 border-b border-blue-900 flex items-center justify-between">
            <div className="flex items-center gap-2">
               <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
               <h3 className="text-[10px] font-black text-blue-900 uppercase tracking-widest">NRT Grading Cut-offs</h3>

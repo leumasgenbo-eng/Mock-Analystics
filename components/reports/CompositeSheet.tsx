@@ -55,7 +55,7 @@ const CompositeSheet: React.FC<CompositeSheetProps> = ({ students, stats, settin
               {SUBJECT_LIST.map(sub => (
                 <th key={sub} className="p-2 border-r border-blue-900" colSpan={2}>{sub.substring(0, 12)}</th>
               ))}
-              <th className="p-2 bg-slate-800 font-black">Exam (A+B)</th>
+              <th className="p-2 bg-slate-800 font-black">Sum (A+B)</th>
               <th className="p-2 bg-red-700 font-black">Composite</th>
               <th className="p-2 bg-red-800 font-black">Agg</th>
             </tr>
@@ -77,7 +77,9 @@ const CompositeSheet: React.FC<CompositeSheetProps> = ({ students, stats, settin
                 <td className="p-2 text-center font-black bg-slate-50 text-slate-500 border-r border-gray-100">
                   {Math.round(student.subjects.reduce((sum, s) => sum + (s.score || 0), 0) / (student.subjects.length || 1))}
                 </td>
-                <td className="p-2 text-center font-black bg-gray-50 text-blue-900 border-r border-gray-100">{Math.round(student.totalScore)}</td>
+                <td className="p-2 text-center font-black bg-gray-50 text-blue-900 border-r border-gray-100">
+                  {Math.round(student.subjects.reduce((sum, s) => sum + (s.finalCompositeScore || 0), 0) / (student.subjects.length || 1))}
+                </td>
                 <td className="p-2 text-center font-black text-red-700 bg-red-50">{student.bestSixAggregate}</td>
               </tr>
             ))}
@@ -87,7 +89,7 @@ const CompositeSheet: React.FC<CompositeSheetProps> = ({ students, stats, settin
               <td colSpan={2} className="p-3 text-right bg-blue-100/50 text-blue-950 tracking-widest border-r border-blue-200">Cohort Mean (μ)</td>
               {SUBJECT_LIST.map(sub => (
                 <td key={sub + '-mean'} colSpan={2} className="p-2 text-center text-blue-900 font-mono text-[11px] border-r border-blue-100">
-                   {Math.round(stats.subjectMeans[sub] || 0)}%
+                   {Math.round(stats.subjectMeans[sub] || 0)}
                 </td>
               ))}
               <td colSpan={3} className="bg-blue-100/50"></td>
@@ -131,7 +133,7 @@ const CompositeSheet: React.FC<CompositeSheetProps> = ({ students, stats, settin
                 <div className="grid grid-cols-2 gap-2">
                    <div className="bg-gray-50 p-2 rounded-xl border border-gray-100 text-center">
                      <span className="text-[7px] font-black text-gray-400 uppercase block">Mean</span>
-                     <p className="text-sm font-black text-blue-950">{Math.round(fa.mean)}%</p>
+                     <p className="text-sm font-black text-blue-950">{Math.round(fa.mean)}</p>
                    </div>
                    <div className="bg-gray-50 p-2 rounded-xl border border-gray-100 text-center">
                      <span className="text-[7px] font-black text-gray-400 uppercase block">SD (σ)</span>

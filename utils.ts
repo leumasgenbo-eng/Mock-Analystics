@@ -22,6 +22,9 @@ export const getNormalizedScore = (score: number, subject: string, config: Globa
   return score;
 };
 
+/**
+ * REDEFINED: Composite Score is strictly the sum of OBJ and THY.
+ */
 export const getFinalCompositeScore = (
   rawExam: number, 
   rawSba: number, 
@@ -29,14 +32,9 @@ export const getFinalCompositeScore = (
   sbaConfig: GlobalSettings['sbaConfig'],
   subject: string
 ): number => {
-  const normalizedExam = getNormalizedScore(rawExam, subject, normConfig);
-  if (!sbaConfig.enabled) return normalizedExam;
-  
-  // Standard NRT weighting: (SBA% of 100) + (Exam% of normalized exam)
-  const sbaWeight = sbaConfig.sbaWeight || 0;
-  const examWeight = sbaConfig.examWeight || (100 - sbaWeight);
-  
-  return (rawSba * (sbaWeight / 100)) + (normalizedExam * (examWeight / 100));
+  // As per instructions: COMPOSITE SCORE IS THE SUM SCORE OF OBJ AND THY SCORE
+  // Even if SBA is enabled, the User requested Composite to be the Sum of the Exam parts.
+  return rawExam; 
 };
 
 export const getGradeFromZScore = (score: number, mean: number, stdDev: number, thresholds: GradingThresholds): { grade: string, value: number, remark: string } => {
@@ -87,8 +85,8 @@ export const calculateClassStatistics = (students: StudentData[], settings: Glob
       sectionAScores.push(valA);
       sectionBScores.push(valB);
       const examTotal = valA + valB;
-      const actualExam = (examTotal === 0 && (mockData.scores[subject] || 0) > 0) ? Number(mockData.scores[subject]) : examTotal;
-      return getFinalCompositeScore(actualExam, Number(mockData.sbaScores[subject]) || 0, settings.normalizationConfig, settings.sbaConfig, subject);
+      // Actual sum of Obj + Thy is the base for composite
+      return examTotal;
     });
     
     const mean = calculateMean(compositeScores);
@@ -117,16 +115,18 @@ export const processStudentData = (stats: ClassStatistics, rawStudents: StudentD
       const valA = Number(subSc.sectionA) || 0;
       const valB = Number(subSc.sectionB) || 0;
       const examTotal = valA + valB;
-      const actualExam = (examTotal === 0 && (mockData.scores[subject] || 0) > 0) ? Number(mockData.scores[subject]) : examTotal;
-      const compositeScore = getFinalCompositeScore(actualExam, Number(mockData.sbaScores[subject]) || 0, settings.normalizationConfig, settings.sbaConfig, subject);
+      
+      // Instructional Requirement: Composite = Obj + Thy
+      const compositeScore = examTotal;
       totalScore += compositeScore;
+      
       const mean = stats.subjectMeans[subject];
       const stdDev = stats.subjectStdDevs[subject];
       const { grade, value, remark } = getGradeFromZScore(compositeScore, mean, stdDev, settings.gradingThresholds);
       
       computedSubjects.push({
         subject, 
-        score: actualExam, 
+        score: examTotal, 
         sbaScore: Number(mockData.sbaScores[subject]) || 0, 
         finalCompositeScore: compositeScore,
         grade, 

@@ -142,20 +142,20 @@ const MasterSheet: React.FC<MasterSheetProps> = ({ students, stats, settings, on
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
               <div className="space-y-4">
                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-blue-100 text-blue-900 rounded-lg flex items-center justify-center font-black text-xs">Z</div>
-                    <h5 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">T Rank (Z-Score)</h5>
+                    <div className="w-8 h-8 bg-blue-100 text-blue-900 rounded-lg flex items-center justify-center font-black text-xs">Σ</div>
+                    <h5 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">Composite Sum</h5>
                  </div>
-                 <p className="text-[10px] font-bold text-blue-900 font-mono italic">Z = (x - μ) / σ</p>
-                 <p className="text-[10px] text-slate-500 leading-relaxed font-medium">Calculates the relative distance of score (x) from the class mean (μ). It provides the statistical rank of a student relative to the cohort's overall spread.</p>
+                 <p className="text-[10px] font-bold text-blue-900 font-mono italic">Sum = Section A + Section B</p>
+                 <p className="text-[10px] text-slate-500 leading-relaxed font-medium">As per instruction, the composite score is the absolute sum of Objective and Theory papers. Grading is derived from this total.</p>
               </div>
 
               <div className="space-y-4">
                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-indigo-100 text-indigo-900 rounded-lg flex items-center justify-center font-black text-xs">σ</div>
-                    <h5 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">Std. Deviation</h5>
+                    <div className="w-8 h-8 bg-indigo-100 text-indigo-900 rounded-lg flex items-center justify-center font-black text-xs">Z</div>
+                    <h5 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">NRT Positioning</h5>
                  </div>
-                 <p className="text-[10px] font-bold text-indigo-900 font-mono italic">σ = √[Σ(x-μ)² / N]</p>
-                 <p className="text-[10px] text-slate-500 leading-relaxed font-medium">Determines the consistency of scores within the cohort. Low σ indicates high uniform absorption of the examined concepts.</p>
+                 <p className="text-[10px] font-bold text-indigo-900 font-mono italic">Z = (x - μ) / σ</p>
+                 <p className="text-[10px] text-slate-500 leading-relaxed font-medium">Determines the student's distance from the class mean (μ) in standard deviation (σ) units. This establishes the percentile-based grade.</p>
               </div>
 
               <div className="space-y-4">
