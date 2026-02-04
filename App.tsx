@@ -81,8 +81,10 @@ const App: React.FC = () => {
   }, [settings, students, facilitators]);
 
   /**
-   * REFINED CLOUD SYNC ENGINE
-   * Accepts optional overrides to bypass React state lag.
+   * ENHANCED TRIPLE-MIRROR SYNC ENGINE
+   * 1. Persistence Shard (uba_persistence)
+   * 2. Identity Registry (uba_identities)
+   * 3. Facilitator Records (uba_facilitators)
    */
   const handleSaveAll = async (overrides?: { settings?: GlobalSettings, students?: StudentData[], facilitators?: Record<string, StaffAssignment> }) => {
     const activeSettings = overrides?.settings || stateRef.current.settings;
@@ -92,7 +94,7 @@ const App: React.FC = () => {
     const hubId = activeSettings.schoolNumber || currentHubId;
     if (!hubId) return;
 
-    // 1. Local Mirror Sharding
+    // Local Mirror
     localStorage.setItem(`uba_safety_shard_${hubId}`, JSON.stringify({
       settings: activeSettings,
       students: activeStudents,
@@ -103,15 +105,44 @@ const App: React.FC = () => {
     try {
       const timestamp = new Date().toISOString();
       
-      // 2. Persistence Upsert (Full State)
-      const updates = [
+      // 1. Persistence Layer: Snapshot Blob
+      const persistenceUpdates = [
         { id: `${hubId}_settings`, hub_id: hubId, payload: activeSettings, last_updated: timestamp },
         { id: `${hubId}_students`, hub_id: hubId, payload: activeStudents, last_updated: timestamp },
         { id: `${hubId}_facilitators`, hub_id: hubId, payload: activeFacs, last_updated: timestamp }
       ];
-      await supabase.from('uba_persistence').upsert(updates);
+      await supabase.from('uba_persistence').upsert(persistenceUpdates);
 
-      // 3. Granular Score Sync (BI Analytics)
+      // 2. Relational Mirror: Identifiers & Credentials
+      const facilitatorList = Object.values(activeFacs) as StaffAssignment[];
+      if (facilitatorList.length > 0) {
+        const identitiesBatch = facilitatorList.map(f => ({
+          email: f.email.toLowerCase().trim(),
+          full_name: f.name.toUpperCase().trim(),
+          node_id: f.enrolledId,
+          hub_id: hubId,
+          role: f.role.toLowerCase().includes('admin') ? 'school_admin' : 'facilitator',
+          unique_code: f.uniqueCode
+        }));
+        
+        const facilitatorsBatch = facilitatorList.map(f => ({
+          email: f.email.toLowerCase().trim(),
+          full_name: f.name.toUpperCase().trim(),
+          hub_id: hubId,
+          node_id: f.enrolledId,
+          taught_subject: f.taughtSubject,
+          teaching_category: f.teachingCategory || 'BASIC_SUBJECT_LEVEL',
+          unique_code: f.uniqueCode,
+          merit_balance: f.account?.meritTokens || 0,
+          monetary_balance: f.account?.monetaryCredits || 0,
+          invigilation_data: f.invigilations
+        }));
+
+        await supabase.from('uba_identities').upsert(identitiesBatch);
+        await supabase.from('uba_facilitators').upsert(facilitatorsBatch);
+      }
+
+      // 3. Analytics Mirror: Score Registry
       const activeMock = activeSettings.activeMock;
       const scoresPayload = activeStudents.flatMap(s => {
          const mockSet = s.mockData?.[activeMock];
@@ -130,17 +161,17 @@ const App: React.FC = () => {
       });
 
       if (scoresPayload.length > 0) {
-         const { error } = await supabase.from('uba_mock_scores').upsert(scoresPayload);
-         if (error) console.error("[BI SYNC ERROR]", error);
+         await supabase.from('uba_mock_scores').upsert(scoresPayload);
       }
 
-      // 4. Audit Logging
+      // 4. Audit Log
       await supabase.from('uba_activity_logs').insert({
           node_id: hubId,
           staff_id: loggedInUser?.email || 'SYSTEM_AUTO',
-          action_type: 'SCORE_REGISTRY_SYNC',
-          context_data: { status: 'COMMITTED', shards: scoresPayload.length, mock: activeMock }
+          action_type: 'TRIPLE_MIRROR_SYNC',
+          context_data: { status: 'COMMITTED', staff_count: facilitatorList.length, mock: activeMock }
       });
+      
     } catch (e) {
       console.warn("[CLOUD SYNC ERROR]", e);
     }

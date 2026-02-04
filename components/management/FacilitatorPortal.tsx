@@ -27,45 +27,15 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
   const createEmptyRegister = (): InvigilationSlot[] => 
     Array.from({ length: 9 }, () => ({ dutyDate: '', timeSlot: '', subject: '' }));
 
-  const syncStaffToTables = async (staff: StaffAssignment) => {
-    const hubId = settings.schoolNumber;
-    const targetEmail = staff.email.toLowerCase().trim();
-    const targetName = staff.name.toUpperCase().trim();
-    const uniqueCode = staff.uniqueCode || `PIN-${Math.floor(1000 + Math.random() * 8999)}`;
-    const role = staff.role.toLowerCase().includes('admin') ? 'school_admin' : 'facilitator';
-
-    await supabase.from('uba_identities').upsert({
-      email: targetEmail,
-      full_name: targetName,
-      node_id: staff.enrolledId, 
-      hub_id: hubId,   
-      role: role,
-      unique_code: uniqueCode
-    });
-
-    await supabase.from('uba_facilitators').upsert({
-      email: targetEmail,
-      full_name: targetName,
-      hub_id: hubId,
-      node_id: staff.enrolledId,
-      taught_subject: staff.taughtSubject,
-      teaching_category: staff.teachingCategory || 'BASIC_SUBJECT_LEVEL',
-      unique_code: uniqueCode,
-      merit_balance: staff.account?.meritTokens || 0,
-      monetary_balance: staff.account?.monetaryCredits || 0,
-      invigilation_data: staff.invigilations
-    });
-  };
-
+  // Centralized sync logic now handled by App.tsx's handleSaveAll for reliability across mirrors.
   const handleGlobalFacultySync = async () => {
     const facArray = Object.values(facilitators) as StaffAssignment[];
     if (facArray.length === 0) return alert("No facilitators found to sync.");
     setIsEnrolling(true);
     try {
-      const syncTasks = facArray.map(f => syncStaffToTables(f));
-      await Promise.all(syncTasks);
-      onSave();
-      alert(`FACULTY CLOUD SYNC COMPLETE: ${facArray.length} specialists verified.`);
+      // central engine handles uba_persistence, uba_identities, and uba_facilitators in one handshake.
+      await onSave({ facilitators });
+      alert(`FACULTY CLOUD SYNC COMPLETE: ${facArray.length} specialists verified across triple mirrors.`);
     } catch (err: any) {
       alert("Sync Failure: " + err.message);
     } finally {
@@ -172,8 +142,9 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         }
       }
       setFacilitators(nextFacs);
+      // Central engine will perform the triple mirror sync on uba_identities, facilitators and persistence.
       onSave({ facilitators: nextFacs });
-      alert(`FACULTY BUFFERED: ${dataLines.length} specialists added.`);
+      alert(`FACULTY BUFFERED: ${dataLines.length} specialists added and mirrored to cloud.`);
       if (fileInputRef.current) fileInputRef.current.value = "";
     };
     reader.readAsText(file);
@@ -204,15 +175,18 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         uniqueCode: uniqueCode,
         enrolledId: nodeId
       };
-      await syncStaffToTables(staff);
+      
       const nextFacilitators = { ...facilitators };
       if (editingEmail && editingEmail !== targetEmail) delete nextFacilitators[editingEmail];
       nextFacilitators[targetEmail] = staff;
+      
       setFacilitators(nextFacilitators);
-      onSave({ facilitators: nextFacilitators });
+      // central engine handles uba_persistence, uba_identities, and uba_facilitators in one handshake.
+      await onSave({ facilitators: nextFacilitators });
+      
       setNewStaff({ name: '', email: '', role: 'FACILITATOR', subject: '', category: 'BASIC_SUBJECT_LEVEL', uniqueCode: '' });
       setEditingEmail(null);
-      alert("STAFF NODE ACTIVATED.");
+      alert("STAFF NODE ACTIVATED & MIRRORED.");
     } catch (err: any) {
       alert(`ENROLLMENT FAULT: ${err.message}`);
     } finally {

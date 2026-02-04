@@ -49,17 +49,17 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
         <div className="flex-1 space-y-2">
           <h1 className={`${isLandscape ? 'text-6xl' : 'text-5xl'} font-black text-blue-950 tracking-tighter uppercase leading-none`}>
             {readOnly ? (settings.schoolName || "UNITED BAYLOR ACADEMY") : (
-              <EditableField value={settings.schoolName || "UNITED BAYLOR ACADEMY"} onChange={(v) => onSettingChange('schoolName', v.toUpperCase())} className="text-center w-full font-black" />
+              <EditableField value={settings.schoolName || "UNITED BAYLOR ACADEMY"} onChange={(v) => onSettingChange('schoolName', v.toUpperCase())} className="text-center w-full font-black hover:bg-blue-50 transition-colors rounded-xl" />
             )}
           </h1>
           <div className="text-[12px] font-bold text-blue-800/60 uppercase tracking-[0.5em] italic">
             {readOnly ? (settings.schoolMotto || "EXCELLENCE IN KNOWLEDGE AND CHARACTER") : (
-              <EditableField value={settings.schoolMotto || "EXCELLENCE IN KNOWLEDGE AND CHARACTER"} onChange={(v) => onSettingChange('schoolMotto', v.toUpperCase())} className="text-center w-full" />
+              <EditableField value={settings.schoolMotto || "EXCELLENCE IN KNOWLEDGE AND CHARACTER"} onChange={(v) => onSettingChange('schoolMotto', v.toUpperCase())} className="text-center w-full hover:bg-blue-50 transition-colors rounded-xl" />
             )}
           </div>
           <div className="text-[11px] font-black text-gray-500 uppercase tracking-[0.4em] pt-2">
             {readOnly ? (settings.schoolAddress || "ACCRA DIGITAL CENTRE, GHANA") : (
-              <EditableField value={settings.schoolAddress || "ACCRA DIGITAL CENTRE, GHANA"} onChange={(v) => onSettingChange('schoolAddress', v.toUpperCase())} className="text-center w-full" />
+              <EditableField value={settings.schoolAddress || "ACCRA DIGITAL CENTRE, GHANA"} onChange={(v) => onSettingChange('schoolAddress', v.toUpperCase())} className="text-center w-full hover:bg-blue-50 transition-colors rounded-xl" />
             )}
           </div>
         </div>
@@ -68,23 +68,23 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
       {/* Official Report Title Cluster */}
       <div className="mt-8 mb-6">
          <h2 className="text-2xl font-black text-red-700 uppercase tracking-[0.4em] bg-red-50/50 py-3 border-y border-red-100">
-           {readOnly ? reportTitle : <EditableField value={reportTitle} onChange={(v) => onSettingChange('examTitle', v.toUpperCase())} className="text-center w-full" />}
+           {readOnly ? reportTitle : <EditableField value={reportTitle} onChange={(v) => onSettingChange('examTitle', v.toUpperCase())} className="text-center w-full hover:bg-red-100 transition-colors" />}
          </h2>
          {subtitle && <p className="text-[11px] font-black text-blue-900 uppercase tracking-[0.6em] mt-3">{subtitle}</p>}
       </div>
 
       {/* Connectivity & Handshake Cluster - Fully Editable Contact Particulars */}
-      <div className="flex justify-center flex-wrap gap-x-14 gap-y-3 text-[10px] font-black text-blue-950 uppercase tracking-[0.3em] pt-6 border-t border-slate-50">
-        <div className="flex gap-2 items-center">
-          <span className="text-slate-300">TEL:</span>
+      <div className="flex justify-center flex-wrap gap-x-14 gap-y-3 text-[10px] font-black text-blue-950 uppercase tracking-widest pt-6 border-t border-slate-50">
+        <div className="flex gap-2 items-center hover:bg-blue-50 transition-colors px-3 py-1 rounded-xl group">
+          <span className="text-slate-300 group-hover:text-blue-400">TEL:</span>
           {readOnly ? settings.schoolContact : <EditableField value={settings.schoolContact} onChange={(v) => onSettingChange('schoolContact', v)} className="font-black" />}
         </div>
-        <div className="flex gap-2 items-center">
-          <span className="text-slate-300">MAIL:</span>
+        <div className="flex gap-2 items-center hover:bg-blue-50 transition-colors px-3 py-1 rounded-xl group">
+          <span className="text-slate-300 group-hover:text-blue-400">MAIL:</span>
           {readOnly ? settings.schoolEmail : <EditableField value={settings.schoolEmail} onChange={(v) => onSettingChange('schoolEmail', v.toLowerCase())} className="font-black" />}
         </div>
-        <div className="flex gap-2 items-center">
-          <span className="text-slate-300">WEB:</span>
+        <div className="flex gap-2 items-center hover:bg-blue-50 transition-colors px-3 py-1 rounded-xl group">
+          <span className="text-slate-300 group-hover:text-blue-400">WEB:</span>
           {readOnly ? (settings.schoolWebsite || "WWW.UNITEDBAYLOR.EDU") : <EditableField value={settings.schoolWebsite || "WWW.UNITEDBAYLOR.EDU"} onChange={(v) => onSettingChange('schoolWebsite', v.toLowerCase())} className="font-black" />}
         </div>
       </div>
