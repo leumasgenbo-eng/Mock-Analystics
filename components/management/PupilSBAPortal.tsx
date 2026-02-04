@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { StudentData, GlobalSettings } from '../../types';
+import { StudentData, GlobalSettings, MockScoreSet } from '../../types';
 import { supabase } from '../../supabaseClient';
 
 interface PupilSBAPortalProps {
@@ -77,10 +77,15 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     if (students.length === 0) return alert("No pupils found to sync.");
     setIsEnrolling(true);
     try {
+      // 1. Sync individual identity records
       const syncTasks = students.map(s => syncToRelationalTables(s));
       await Promise.all(syncTasks);
-      onSave(); 
-      alert(`CLOUD SYNCHRONIZATION COMPLETE: ${students.length} pupils mirrored.`);
+      
+      // 2. Commit full state (Settings + Students + Facilitators) to Persistence Layer
+      // This also extracts scores/SBA into the uba_mock_scores analytical table
+      onSave({ students: students }); 
+      
+      alert(`CLOUD SYNCHRONIZATION COMPLETE: ${students.length} pupils and all SBA shards mirrored.`);
     } catch (err: any) {
       alert("Sync Failure: " + err.message);
     } finally {
@@ -182,7 +187,26 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     const numeric = Math.min(100, Math.max(0, parseInt(value) || 0));
     setStudents(prev => prev.map(s => {
       if (s.id !== studentId) return s;
-      return { ...s, sbaScores: { ...(s.sbaScores || {}), [subject]: numeric } };
+      
+      // Mirror update to both top-level and series-specific mockData
+      const activeMock = settings.activeMock;
+      const currentMockData = s.mockData?.[activeMock] || { 
+        scores: {}, sbaScores: {}, examSubScores: {}, facilitatorRemarks: {}, 
+        observations: { facilitator: "", invigilator: "", examiner: "" }, 
+        attendance: 0, conductRemark: "" 
+      };
+
+      return { 
+        ...s, 
+        sbaScores: { ...(s.sbaScores || {}), [subject]: numeric },
+        mockData: {
+          ...(s.mockData || {}),
+          [activeMock]: {
+            ...currentMockData,
+            sbaScores: { ...(currentMockData.sbaScores || {}), [subject]: numeric }
+          }
+        }
+      };
     }));
   };
 
@@ -211,7 +235,11 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
             <div className="flex flex-wrap justify-center gap-4">
                <button onClick={handleGlobalCloudSync} disabled={isEnrolling} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-xl transition-all active:scale-95 flex items-center gap-2">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 2v6h-6"/><path d="M21 13a9 9 0 1 1-3-7.7L21 8"/></svg>
-                  Save All to Cloud
+                  Sync Pupil Identity
+               </button>
+               <button onClick={() => { onSave(); alert("GLOBAL SBA RECONCILIATION: All local SBA edits committed to cloud shards."); }} className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-xl transition-all active:scale-95 flex items-center gap-2">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                  Sync Master SBA Registry
                </button>
                <button onClick={handleDownloadTemplate} className="bg-white/5 hover:bg-white/10 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase border border-white/10 transition-all flex items-center gap-2">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -220,10 +248,6 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
                <button onClick={() => fileInputRef.current?.click()} className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-xl transition-all active:scale-95 flex items-center gap-2">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
                   Bulk Enrollment (CSV)
-               </button>
-               <button onClick={handleDownloadRegistry} className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase border border-indigo-100 transition-all flex items-center gap-2">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  Export Registry
                </button>
                <input type="file" ref={fileInputRef} onChange={handleBulkUpload} accept=".csv" className="hidden" />
             </div>
@@ -256,6 +280,7 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
          <div className="grid grid-cols-1 gap-6">
             {filteredStudents.map(s => {
                const isOpen = activeSbaId === s.id;
+               const mockSba = s.mockData?.[settings.activeMock]?.sbaScores || {};
                return (
                  <div key={s.id} className="bg-white rounded-[2.5rem] border border-gray-100 shadow-lg overflow-hidden group hover:border-blue-300 transition-all">
                     <div className="p-8 flex flex-col md:flex-row justify-between items-center gap-8">
@@ -286,9 +311,9 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
                                    <label className="text-[7px] font-black text-slate-400 uppercase tracking-widest block ml-1">{sub}</label>
                                    <input 
                                      type="number" 
-                                     value={s.sbaScores?.[sub] || 0} 
+                                     value={mockSba[sub] || 0} 
                                      onChange={(e) => updateSbaScore(s.id, sub, e.target.value)}
-                                     className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs font-black text-blue-900 outline-none focus:ring-2 focus:ring-blue-500/20"
+                                     className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs font-black text-blue-900 outline-none focus:ring-2 focus:ring-blue-500/20 font-mono"
                                    />
                                 </div>
                              ))}
