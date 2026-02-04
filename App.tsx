@@ -19,11 +19,11 @@ import SuperAdminPortal from './components/hq/SuperAdminPortal';
 import { SUBJECT_LIST, DEFAULT_THRESHOLDS, DEFAULT_NORMALIZATION, DEFAULT_CATEGORY_THRESHOLDS } from './constants';
 
 const DEFAULT_SETTINGS: GlobalSettings = {
-  schoolName: "SS-MAP ACADEMY",
+  schoolName: "UNITED BAYLOR ACADEMY",
   schoolMotto: "EXCELLENCE IN KNOWLEDGE AND CHARACTER",
-  schoolWebsite: "www.ssmap.edu",
+  schoolWebsite: "www.unitedbaylor.edu",
   schoolAddress: "ACCRA DIGITAL CENTRE, GHANA",
-  schoolNumber: "SSM-NODE-2025", 
+  schoolNumber: "UBA-NODE-2025", 
   schoolLogo: "", 
   examTitle: "OFFICIAL MOCK ASSESSMENT SERIES",
   termInfo: "TERM 2",
@@ -35,7 +35,7 @@ const DEFAULT_SETTINGS: GlobalSettings = {
   headTeacherName: "DIRECTOR NAME",
   reportDate: new Date().toLocaleDateString(),
   schoolContact: "+233 24 350 4091",
-  schoolEmail: "info@ssmap.edu",
+  schoolEmail: "info@unitedbaylor.edu.gh",
   gradingThresholds: DEFAULT_THRESHOLDS,
   categoryThresholds: DEFAULT_CATEGORY_THRESHOLDS,
   normalizationConfig: DEFAULT_NORMALIZATION,
@@ -53,9 +53,9 @@ const DEFAULT_SETTINGS: GlobalSettings = {
   reportTemplate: 'standard',
   adminRoleTitle: "Academy Director",
   registryRoleTitle: "Examination Registry",
-  accessCode: "SSM-MASTER-KEY",
-  staffAccessCode: "STAFF-SSM-2025",
-  pupilAccessCode: "PUPIL-SSM-2025",
+  accessCode: "UBA-MASTER-KEY",
+  staffAccessCode: "STAFF-UBA-2025",
+  pupilAccessCode: "PUPIL-UBA-2025",
   enrollmentDate: new Date().toLocaleDateString()
 };
 
@@ -80,9 +80,6 @@ const App: React.FC = () => {
     stateRef.current = { settings, students, facilitators };
   }, [settings, students, facilitators]);
 
-  /**
-   * EMERGENCY BLACK-BOX PERSISTENCE
-   */
   const handleSaveAll = async (overrides?: { settings?: GlobalSettings, students?: StudentData[], facilitators?: Record<string, StaffAssignment> }) => {
     const activeSettings = overrides?.settings || stateRef.current.settings;
     const activeStudents = overrides?.students || stateRef.current.students;
@@ -293,7 +290,7 @@ const App: React.FC = () => {
         {viewMode==='reports' && (
           <div className="space-y-8">
             <input type="text" placeholder="Search..." value={reportSearchTerm} onChange={(e)=>setReportSearchTerm(e.target.value)} className="w-full p-6 rounded-3xl border-2 border-gray-100 shadow-sm font-bold no-print outline-none" />
-            {processedStudents.filter(s=>(s.name||"").toLowerCase().includes(reportSearchTerm.toLowerCase())).map(s=><ReportCard key={s.id} student={s} stats={stats} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); handleSaveAll({settings:next}); }} classAverageAggregate={classAvgAggregate} totalEnrolled={processedStudents.length} isFacilitator={activeRole === 'facilitator'} />)}
+            {processedStudents.filter(s=>(s.name||"").toLowerCase().includes(reportSearchTerm.toLowerCase())).map(s=><ReportCard key={s.id} student={s} stats={stats} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); handleSaveAll({settings:next}); }} classAverageAggregate={classAvgAggregate} totalEnrolled={processedStudents.length} isFacilitator={activeRole === 'facilitator'} loggedInUser={loggedInUser} />)}
           </div>
         )}
         {viewMode==='management' && <ManagementDesk students={students} setStudents={setStudents} facilitators={facilitators} setFacilitators={setFacilitators} subjects={SUBJECT_LIST} settings={settings} onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} onBulkUpdate={(u)=>{ const next={...settings,...u}; setSettings(next); handleSaveAll({settings:next}); }} onSave={handleSaveAll} processedSnapshot={processedStudents} onLoadDummyData={()=>{}} onClearData={()=>{}} isFacilitator={activeRole === 'facilitator'} loggedInUser={loggedInUser} />}

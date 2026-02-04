@@ -187,10 +187,11 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
            {isLoading ? (
               <div className="py-40 flex flex-col items-center justify-center gap-6 opacity-30">
                  <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                 <p className="text-[10px] font-black uppercase tracking-[0.4em]">Querying Global Register...</p>
+                 <p className="text-[10px] font-black uppercase tracking-0.4em">Querying Global Register...</p>
               </div>
            ) : (
-             Object.entries(groupedQuestions).map(([indicatorKey, qList]) => (
+             // Fix: Cast Object.entries to [string, MasterQuestion[]][] to resolve unknown type errors for qList access
+             (Object.entries(groupedQuestions) as [string, MasterQuestion[]][]).map(([indicatorKey, qList]) => (
                 <div key={indicatorKey} className="bg-white border border-gray-100 rounded-[3rem] shadow-xl overflow-hidden animate-in fade-in duration-700">
                    <div className="bg-slate-900 px-10 py-6 border-b border-white/5 flex justify-between items-center">
                       <div className="space-y-1">

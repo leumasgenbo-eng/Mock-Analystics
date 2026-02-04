@@ -13,9 +13,10 @@ interface ReportCardProps {
   classAverageAggregate: number;
   totalEnrolled?: number;
   isFacilitator?: boolean;
+  loggedInUser?: { name: string; nodeId: string; role: string; email?: string; subject?: string } | null;
 }
 
-const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSettingChange, onStudentUpdate, classAverageAggregate, totalEnrolled, isFacilitator }) => {
+const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSettingChange, onStudentUpdate, classAverageAggregate, totalEnrolled, isFacilitator, loggedInUser }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [scale, setScale] = useState(1);
 
@@ -56,11 +57,18 @@ const ReportCard: React.FC<ReportCardProps> = ({ student, stats, settings, onSet
   };
 
   const handleWhatsAppShare = () => {
-    const msg = `*${settings.schoolName} - ASSESSMENT REPORT*\n` +
+    let msg = `*${settings.schoolName} - ASSESSMENT REPORT*\n` +
                 `Name: *${student.name}*\n` +
                 `Aggregate: *${student.bestSixAggregate}*\n` +
                 `Rank: *${student.rank} of ${totalEnrolled}*\n` +
                 `Status: ${student.category}`;
+    
+    if (isFacilitator && loggedInUser) {
+      msg += `\n\n*FORWARDED BY:* ${loggedInUser.name}\n` +
+             `*FACILITATOR EID:* ${loggedInUser.nodeId}\n` +
+             `*SUBJECT:* ${loggedInUser.subject || 'GENERAL'}`;
+    }
+    
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
 

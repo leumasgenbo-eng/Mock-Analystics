@@ -58,7 +58,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
   };
 
   const handleGlobalFacultySync = async () => {
-    const facArray = Object.values(facilitators);
+    const facArray = Object.values(facilitators) as StaffAssignment[];
     if (facArray.length === 0) return alert("No facilitators found to sync.");
     setIsEnrolling(true);
     try {
@@ -96,7 +96,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       const date = new Date();
       date.setDate(date.getDate() + i);
       const dateStr = date.toISOString().split('T')[0];
-      const lead = Object.values(facilitators).find(f => f.taughtSubject === sub)?.name || 'TBA';
+      const lead = (Object.values(facilitators) as StaffAssignment[]).find(f => f.taughtSubject === sub)?.name || 'TBA';
       content += `${dateStr.padEnd(10)} | 09:00 - 11:30 | ${sub.padEnd(22)} | ${lead}\n`;
     });
 
@@ -107,6 +107,19 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
     link.download = `Exam_Schedule_${settings.activeMock}.txt`;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleWhatsAppForward = (f: StaffAssignment) => {
+    const msg = `*UNITED BAYLOR ACADEMY - STAFF ACCESS PACK*\n\n` +
+                `Hello *${f.name}*,\n` +
+                `Your instructional node has been activated for *${settings.schoolName}*.\n\n` +
+                `*RECALL PARTICULARS:*\n` +
+                `Full Name: *${f.name}*\n` +
+                `Official Node ID: *${f.enrolledId}*\n` +
+                `Access PIN: *${f.uniqueCode}*\n\n` +
+                `_Generated via SS-Map Institutional Hub_`;
+    
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
   const handleDeleteStaff = async (email: string) => {
@@ -217,7 +230,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
          <div className="flex flex-wrap justify-center gap-3">
             <button onClick={handleGlobalFacultySync} disabled={isEnrolling} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-xl transition-all active:scale-95 flex items-center gap-2">
                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 2v6h-6"/><path d="M21 13a9 9 0 1 1-3-7.7L21 8"/></svg>
-               {isEnrolling ? 'Syncing...' : 'Save All to Cloud'}
+               Save All to Cloud
             </button>
             <button onClick={handleDownloadTemplate} className="bg-white/5 hover:bg-white/10 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase border border-white/10 transition-all flex items-center gap-2">
                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -265,7 +278,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       )}
 
       <div className="grid grid-cols-1 gap-8">
-        {Object.values(facilitators).map((f) => {
+        {(Object.values(facilitators) as StaffAssignment[]).map((f) => {
           const isExpanded = expandedStaff === f.email;
           return (
             <div key={f.email} className="bg-white rounded-[3.5rem] border border-gray-100 shadow-xl overflow-hidden group hover:shadow-2xl transition-all">
@@ -284,15 +297,47 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                   </div>
                   <div className="flex gap-3">
                     {!isFacilitator && (
-                      <button onClick={() => handleDeleteStaff(f.email)} className="bg-red-50 text-red-600 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase border border-red-100 hover:bg-red-600 hover:text-white transition-all">
-                        Decommission
-                      </button>
+                      <>
+                        <button onClick={() => handleWhatsAppForward(f)} className="bg-green-50 text-green-600 px-4 py-2.5 rounded-xl font-black text-[10px] uppercase border border-green-100 hover:bg-green-600 hover:text-white transition-all flex items-center gap-2 shadow-sm" title="Share Credentials via WhatsApp">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-7.6 8.38 8.38 0 0 1 3.8.9L21 3.5Z"/></svg>
+                          Share Keys
+                        </button>
+                        <button onClick={() => handleDeleteStaff(f.email)} className="bg-red-50 text-red-600 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase border border-red-100 hover:bg-red-600 hover:text-white transition-all">
+                          Decommission
+                        </button>
+                      </>
                     )}
                     <button onClick={() => setExpandedStaff(isExpanded ? null : f.email)} className={`px-8 py-2.5 rounded-xl font-black text-[10px] uppercase transition-all shadow-md flex items-center gap-2 ${isExpanded ? 'bg-blue-900 text-white' : 'bg-slate-950 text-white'}`}>
                        {isExpanded ? 'Hide Register' : 'View Register'}
                     </button>
                   </div>
                </div>
+               {isExpanded && (
+                  <div className="px-10 pb-10 pt-4 bg-slate-50 border-t border-gray-100 animate-in slide-in-from-top-2">
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {f.invigilations.map((slot, sIdx) => (
+                           <div key={sIdx} className="bg-white p-6 rounded-[2rem] border border-gray-200 space-y-3 shadow-sm">
+                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Invigilation Slot {sIdx + 1}</label>
+                              <div className="space-y-2">
+                                 <input type="date" value={slot.dutyDate} className="w-full text-xs font-bold text-blue-900 outline-none bg-slate-50 px-3 py-2 rounded-xl" onChange={(e) => {
+                                    const next = {...facilitators};
+                                    next[f.email].invigilations[sIdx].dutyDate = e.target.value;
+                                    setFacilitators(next);
+                                 }} />
+                                 <input type="text" placeholder="Subject/Series" value={slot.subject} className="w-full text-xs font-black uppercase outline-none bg-slate-50 px-3 py-2 rounded-xl placeholder:opacity-30" onChange={(e) => {
+                                    const next = {...facilitators};
+                                    next[f.email].invigilations[sIdx].subject = e.target.value.toUpperCase();
+                                    setFacilitators(next);
+                                 }} />
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                     <div className="mt-8 flex justify-end">
+                        <button onClick={() => { onSave(); setExpandedStaff(null); }} className="bg-blue-900 text-white px-10 py-4 rounded-2xl font-black text-[11px] uppercase shadow-xl active:scale-95 transition-all hover:bg-black">Sync Staff Register</button>
+                     </div>
+                  </div>
+               )}
             </div>
           );
         })}

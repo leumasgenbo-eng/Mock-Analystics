@@ -179,7 +179,8 @@ const EnrolmentForwardingPortal: React.FC<EnrolmentForwardingPortalProps> = ({ s
             <div className="bg-white border border-gray-100 rounded-[3rem] p-8 shadow-xl space-y-6">
                <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 border-b border-gray-100 pb-4">Faculty Contract Recommendations</h3>
                <div className="space-y-4 max-h-[400px] overflow-y-auto no-scrollbar">
-                  {Object.values(facilitators).map(f => {
+                  {/* Fix: Cast Object.values to StaffAssignment[] to resolve unknown type and property access errors */}
+                  {(Object.values(facilitators) as StaffAssignment[]).map(f => {
                     const rec = forwardingData?.facilitatorRecommendations[f.email];
                     return (
                       <div key={f.email} className="bg-slate-50 p-5 rounded-3xl border border-gray-100 space-y-4 group">
