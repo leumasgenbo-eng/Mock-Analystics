@@ -82,11 +82,13 @@ export const calculateClassStatistics = (students: StudentData[], settings: Glob
     const compositeScores = students.map(s => {
       const mockData = getStudentMockData(s, settings.activeMock);
       const subSc = mockData.examSubScores[subject] || { sectionA: 0, sectionB: 0 };
-      sectionAScores.push(subSc.sectionA || 0);
-      sectionBScores.push(subSc.sectionB || 0);
-      const examTotal = (subSc.sectionA || 0) + (subSc.sectionB || 0);
-      const actualExam = (examTotal === 0 && (mockData.scores[subject] || 0) > 0) ? mockData.scores[subject] : examTotal;
-      return getFinalCompositeScore(actualExam, mockData.sbaScores[subject] || 0, settings.normalizationConfig, settings.sbaConfig, subject);
+      const valA = Number(subSc.sectionA) || 0;
+      const valB = Number(subSc.sectionB) || 0;
+      sectionAScores.push(valA);
+      sectionBScores.push(valB);
+      const examTotal = valA + valB;
+      const actualExam = (examTotal === 0 && (mockData.scores[subject] || 0) > 0) ? Number(mockData.scores[subject]) : examTotal;
+      return getFinalCompositeScore(actualExam, Number(mockData.sbaScores[subject]) || 0, settings.normalizationConfig, settings.sbaConfig, subject);
     });
     
     const mean = calculateMean(compositeScores);
@@ -112,9 +114,11 @@ export const processStudentData = (stats: ClassStatistics, rawStudents: StudentD
 
     SUBJECT_LIST.forEach(subject => {
       const subSc = mockData.examSubScores[subject] || { sectionA: 0, sectionB: 0 };
-      const examTotal = (subSc.sectionA || 0) + (subSc.sectionB || 0);
-      const actualExam = (examTotal === 0 && (mockData.scores[subject] || 0) > 0) ? mockData.scores[subject] : examTotal;
-      const compositeScore = getFinalCompositeScore(actualExam, mockData.sbaScores[subject] || 0, settings.normalizationConfig, settings.sbaConfig, subject);
+      const valA = Number(subSc.sectionA) || 0;
+      const valB = Number(subSc.sectionB) || 0;
+      const examTotal = valA + valB;
+      const actualExam = (examTotal === 0 && (mockData.scores[subject] || 0) > 0) ? Number(mockData.scores[subject]) : examTotal;
+      const compositeScore = getFinalCompositeScore(actualExam, Number(mockData.sbaScores[subject]) || 0, settings.normalizationConfig, settings.sbaConfig, subject);
       totalScore += compositeScore;
       const mean = stats.subjectMeans[subject];
       const stdDev = stats.subjectStdDevs[subject];
@@ -123,15 +127,15 @@ export const processStudentData = (stats: ClassStatistics, rawStudents: StudentD
       computedSubjects.push({
         subject, 
         score: actualExam, 
-        sbaScore: mockData.sbaScores[subject] || 0, 
+        sbaScore: Number(mockData.sbaScores[subject]) || 0, 
         finalCompositeScore: compositeScore,
         grade, 
         gradeValue: value, 
         remark, 
         facilitator: facilitators[subject] || 'TBA',
         zScore: stdDev === 0 ? 0 : (compositeScore - mean) / stdDev,
-        sectionA: subSc.sectionA || 0,
-        sectionB: subSc.sectionB || 0
+        sectionA: valA,
+        sectionB: valB
       });
     });
 

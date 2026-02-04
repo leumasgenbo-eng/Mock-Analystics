@@ -83,14 +83,23 @@ const CompositeSheet: React.FC<CompositeSheetProps> = ({ students, stats, settin
             ))}
           </tbody>
           <tfoot className="bg-blue-50 font-black border-t-2 border-blue-950 uppercase text-[8px]">
-            <tr className="bg-blue-100/50">
-              <td colSpan={2} className="p-3 text-right bg-blue-100 text-blue-950 tracking-widest border-r border-blue-200">Cohort Mean (μ)</td>
+            <tr className="bg-blue-100/30">
+              <td colSpan={2} className="p-3 text-right bg-blue-100/50 text-blue-950 tracking-widest border-r border-blue-200">Cohort Mean (μ)</td>
               {SUBJECT_LIST.map(sub => (
                 <td key={sub + '-mean'} colSpan={2} className="p-2 text-center text-blue-900 font-mono text-[11px] border-r border-blue-100">
                    {Math.round(stats.subjectMeans[sub] || 0)}%
                 </td>
               ))}
-              <td colSpan={3} className="bg-blue-100"></td>
+              <td colSpan={3} className="bg-blue-100/50"></td>
+            </tr>
+            <tr className="bg-indigo-50/20">
+              <td colSpan={2} className="p-3 text-right bg-indigo-100/30 text-indigo-950 tracking-widest border-r border-indigo-200">Std Deviation (σ)</td>
+              {SUBJECT_LIST.map(sub => (
+                <td key={sub + '-sd'} colSpan={2} className="p-2 text-center text-indigo-800 font-mono text-[10px] border-r border-indigo-100">
+                   {(stats.subjectStdDevs[sub] || 0).toFixed(2)}
+                </td>
+              ))}
+              <td colSpan={3} className="bg-indigo-100/30"></td>
             </tr>
           </tfoot>
         </table>
