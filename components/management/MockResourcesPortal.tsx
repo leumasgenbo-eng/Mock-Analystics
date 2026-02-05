@@ -23,21 +23,29 @@ interface MockResourcesPortalProps {
 const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({ 
   settings, onSettingChange, subjects, facilitators, isFacilitator, activeFacilitator, onSave 
 }) => {
-  const filteredSubjects = isFacilitator && activeFacilitator ? [activeFacilitator.subject] : subjects;
+  // If user is facilitator, only show their subject
+  const filteredSubjects = isFacilitator && activeFacilitator?.subject ? [activeFacilitator.subject] : subjects;
   const [selectedSubject, setSelectedSubject] = useState(filteredSubjects[0]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [logSearch, setLogSearch] = useState('');
-  
-  // Simulation of logs
   const [logs, setLogs] = useState<ResourceLog[]>([]);
 
-  // Find the facilitator assigned to the selected subject
+  // Force subject change if activeFacilitator changes or filtering is applied
+  useEffect(() => {
+    if (isFacilitator && activeFacilitator?.subject) {
+      setSelectedSubject(activeFacilitator.subject);
+    }
+  }, [isFacilitator, activeFacilitator]);
+
   const assignedSpecialist = useMemo(() => {
     return Object.values(facilitators).find(f => f.taughtSubject === selectedSubject) || null;
   }, [facilitators, selectedSubject]);
 
   const activeResource: MockResource = useMemo(() => {
-    return settings.resourcePortal?.[settings.activeMock]?.[selectedSubject] || { indicators: [], questionUrl: '', schemeUrl: '' };
+    // Robust access to the resource portal shards
+    const portal = settings.resourcePortal || {};
+    const mockShard = portal[settings.activeMock] || {};
+    return mockShard[selectedSubject] || { indicators: [], questionUrl: '', schemeUrl: '', status: 'DRAFT' };
   }, [settings.resourcePortal, settings.activeMock, selectedSubject]);
 
   const addLog = (action: string, details: string) => {
@@ -52,9 +60,9 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
 
   const updateResource = (updates: Partial<MockResource>) => {
     setIsSyncing(true);
-    const currentPortal = settings.resourcePortal || {};
-    const mockData = currentPortal[settings.activeMock] || {};
-    const subjectData = mockData[selectedSubject] || { indicators: [], questionUrl: '', schemeUrl: '' };
+    const currentPortal = { ...(settings.resourcePortal || {}) };
+    const mockData = { ...(currentPortal[settings.activeMock] || {}) };
+    const subjectData = { ...(mockData[selectedSubject] || { indicators: [], questionUrl: '', schemeUrl: '', status: 'DRAFT' }) };
     
     const nextResourcePortal = {
       ...currentPortal, 
@@ -71,6 +79,16 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
     }
 
     setTimeout(() => setIsSyncing(false), 500);
+  };
+
+  const handleSubmitResource = () => {
+    if (window.confirm(`SUBMIT FOR ENDORSEMENT: Mark ${selectedSubject} resources as complete for ${settings.activeMock}? This will notify the Academy Admin.`)) {
+      updateResource({ 
+        status: 'SUBMITTED', 
+        submissionDate: new Date().toISOString() 
+      });
+      addLog('SUBMIT_HUB', 'Facilitator finalized resources for administrative review.');
+    }
   };
 
   const handleAddRow = (section: 'A' | 'B') => {
@@ -102,41 +120,42 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
   };
 
   const generateObjectives = () => {
-    if (!window.confirm("STRUCTURAL OVERRIDE: Generate standard 1-40 objective set? Existing Section A rows will be preserved.")) return;
+    if (!window.confirm("STRUCTURAL OVERRIDE: Generate standard 1-40 objective set?")) return;
     const newObjs: QuestionIndicatorMapping[] = Array.from({ length: 40 }, (_, i) => ({
       id: `obj-${Date.now()}-${i}`,
       section: 'A',
       questionRef: (i + 1).toString(),
-      strand: 'Core Content',
-      subStrand: 'General',
-      indicatorCode: 'B9.1.1.1',
-      indicator: 'Standard Objective Item',
+      strand: '',
+      subStrand: '',
+      indicatorCode: '',
+      indicator: '',
       weight: 1
     }));
     updateResource({ indicators: [...activeResource.indicators, ...newObjs] });
-    addLog(`GENERATE_FRAMEWORK`, `Auto-built 40 objective items (Section A).`);
+    addLog(`GENERATE_OBJ`, `Auto-built 40 objective items.`);
   };
 
   const generateTheory = () => {
-    if (!window.confirm("STRUCTURAL OVERRIDE: Generate Section B (Q1-Q5) framework?")) return;
+    if (!window.confirm("STRUCTURAL OVERRIDE: Generate Section B (Q1-Q5) parts?")) return;
+    const nextBase = activeResource.indicators.filter(i => i.section === 'B').length;
     const newTheory: QuestionIndicatorMapping[] = Array.from({ length: 5 }, (_, i) => ({
       id: `thy-${Date.now()}-${i}`,
       section: 'B',
-      questionRef: (i + 1).toString(),
-      strand: 'Theoretical Strand',
-      subStrand: 'Complex Topic',
-      indicatorCode: `B9.2.1.${i+1}`,
-      indicator: 'Advanced Theory Item',
+      questionRef: (nextBase + i + 1).toString(),
+      strand: '',
+      subStrand: '',
+      indicatorCode: '',
+      indicator: '',
       weight: 10
     }));
     updateResource({ indicators: [...activeResource.indicators, ...newTheory] });
-    addLog(`GENERATE_FRAMEWORK`, `Auto-built 5 theory items (Section B).`);
+    addLog(`GENERATE_THEORY`, `Auto-built Section B placeholders.`);
   };
 
   const clearIndicators = () => {
-    if (!window.confirm("CRITICAL PURGE: Clear all mapped indicators for this subject?")) return;
+    if (!window.confirm("CRITICAL PURGE: Clear all mapped indicators?")) return;
     updateResource({ indicators: [] });
-    addLog(`CLEAR_ALL`, `Purged all indicator mappings for ${selectedSubject}.`);
+    addLog(`CLEAR_ALL`, `Purged all indicator mappings.`);
   };
 
   const totalWeight = activeResource.indicators.reduce((sum, i) => sum + (Number(i.weight) || 0), 0);
@@ -144,28 +163,27 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
   const theoryCount = activeResource.indicators.filter(i => i.section === 'B').length;
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-24 font-sans">
+    <div className="space-y-8 animate-in fade-in duration-500 pb-32 font-sans">
       
-      {/* Branded Header with Specialist Alignment */}
-      <header className="bg-slate-950 text-white p-10 rounded-[4rem] shadow-2xl relative overflow-hidden">
+      {/* User Requested Layout: Mock Resources Hub Title Area */}
+      <header className="bg-slate-950 text-white p-10 rounded-[3.5rem] shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
-        {isSyncing && <div className="absolute inset-0 bg-blue-600/5 backdrop-blur-[2px] flex items-center justify-center z-50"><div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div></div>}
+        {isSyncing && <div className="absolute inset-0 bg-blue-600/5 backdrop-blur-[1px] flex items-center justify-center z-50"><div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div></div>}
         
         <div className="relative flex flex-col xl:flex-row justify-between items-center gap-10">
            <div className="space-y-3 text-center xl:text-left">
-              <div className="flex flex-col xl:flex-row xl:items-center gap-4">
-                 <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em]">Mock Resources Hub</h3>
-                 <div className="bg-white/10 px-4 py-1 rounded-full border border-white/5 inline-flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse"></div>
-                    <span className="text-[8px] font-black uppercase text-blue-300">Relational Sync Active</span>
-                 </div>
+              <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em]">Mock Resources Hub</h3>
+              <div className="flex flex-col xl:flex-row xl:items-center gap-3">
+                <p className="text-3xl font-black uppercase tracking-tight leading-none">
+                  {selectedSubject} <span className="text-blue-500 mx-2">/</span> {settings.activeMock}
+                </p>
+                <span className={`px-4 py-1 rounded-full text-[8px] font-black uppercase tracking-widest inline-block ${activeResource.status === 'SUBMITTED' ? 'bg-amber-500 text-white' : activeResource.status === 'VERIFIED' ? 'bg-emerald-500 text-white' : 'bg-white/10 text-slate-400'}`}>
+                  {activeResource.status || 'DRAFT'}
+                </span>
               </div>
-              <p className="text-3xl font-black uppercase tracking-tight leading-none">
-                {selectedSubject} <span className="text-blue-500 mx-2">/</span> {settings.activeMock}
-              </p>
            </div>
 
-           {/* Specialist Node */}
+           {/* Assigned Facilitator Node */}
            <div className="bg-white/5 border border-white/10 p-5 rounded-3xl backdrop-blur-md flex items-center gap-5 min-w-[280px]">
               <div className="w-12 h-12 bg-blue-600/20 text-blue-400 rounded-2xl flex items-center justify-center border border-blue-400/20 shadow-inner shrink-0">
                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -181,8 +199,9 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
            </div>
         </div>
 
-        <div className="mt-8 flex justify-center xl:justify-start">
-           {!isFacilitator && (
+        {/* Global Subject Selector (Hidden for Facilitators) */}
+        {!isFacilitator && (
+          <div className="mt-8 flex justify-center xl:justify-start">
              <div className="flex flex-wrap bg-white/5 p-1.5 rounded-3xl border border-white/10 backdrop-blur-md overflow-x-auto no-scrollbar max-w-full z-10">
                 {subjects.map(s => (
                   <button key={s} onClick={() => setSelectedSubject(s)} className={`px-5 py-2.5 rounded-2xl text-[9px] font-black uppercase transition-all whitespace-nowrap ${selectedSubject === s ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
@@ -190,21 +209,18 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
                   </button>
                 ))}
              </div>
-           )}
-        </div>
+          </div>
+        )}
       </header>
 
-      {/* Resource Management: Papers & Schemes */}
+      {/* Resource Management: Question Paper & Marking Scheme Sections */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
          <div className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-xl space-y-6">
             <div className="flex items-center gap-4">
                <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 shadow-inner">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                </div>
-               <div>
-                  <h4 className="text-lg font-black text-slate-900 uppercase leading-none">Question Paper</h4>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-widest">Document Shard Attachment</p>
-               </div>
+               <h4 className="text-lg font-black text-slate-900 uppercase">Question Paper</h4>
             </div>
             <div className="space-y-4">
                <input 
@@ -226,10 +242,7 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
                <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 shadow-inner">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                </div>
-               <div>
-                  <h4 className="text-lg font-black text-slate-900 uppercase leading-none">Marking Scheme</h4>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-widest">Verification Shard Matrix</p>
-               </div>
+               <h4 className="text-lg font-black text-slate-900 uppercase">Marking Scheme</h4>
             </div>
             <div className="space-y-4">
                <input 
@@ -263,12 +276,12 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
          </div>
       </section>
 
-      {/* Question & Indicator Curriculum Connector Table */}
+      {/* Question & Indicator Curriculum Connector */}
       <div className="bg-white rounded-[3.5rem] border border-gray-100 shadow-2xl overflow-hidden">
         <div className="bg-gray-50 px-10 py-8 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-8">
            <div className="space-y-1 text-center sm:text-left">
               <h4 className="font-black uppercase text-xs text-slate-900 tracking-widest">Question & Indicator Curriculum Connector</h4>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Authorized Shard Matrix mapping</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Shard Matrix mapping for {selectedSubject}</p>
            </div>
            <div className="flex flex-wrap justify-center gap-3">
               <button onClick={() => handleAddRow('A')} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-[9px] font-black uppercase hover:bg-blue-700 transition-all shadow-lg">+ Add Obj Row</button>
@@ -325,7 +338,7 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
               ))}
               {activeResource.indicators.length === 0 && (
                 <tr>
-                   <td colSpan={8} className="py-20 text-center opacity-30 italic text-[10px] font-black uppercase tracking-widest">No curriculum indicators mapped for this series shard</td>
+                   <td colSpan={8} className="py-20 text-center opacity-30 italic text-[10px] font-black uppercase tracking-widest">No indicators mapped for this series shard</td>
                 </tr>
               )}
             </tbody>
@@ -400,6 +413,14 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-lg"></div>
                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Quality Compliance: Verified & Secure</span>
             </div>
+            {isFacilitator && (
+              <button 
+                onClick={handleSubmitResource} 
+                className="bg-emerald-600 text-white px-8 py-4 rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all hover:bg-emerald-700"
+              >
+                Submit for Endorsement
+              </button>
+            )}
             <button 
               onClick={() => onSave?.()} 
               className="bg-blue-950 text-white px-10 py-4 rounded-[2rem] font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl active:scale-95 transition-all hover:bg-black"

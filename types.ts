@@ -121,7 +121,6 @@ export interface SchoolRegistryEntry {
   serializationStatus?: 'PENDING' | 'SERIALIZED';
   remarkTelemetry?: RemarkTelemetry;
   verificationLogs?: Record<string, VerificationEntry[]>;
-  /* Updated fullData to support minimal summary payloads with numeric counts */
   fullData?: {
     settings: GlobalSettings;
     students?: StudentData[] | number;
@@ -143,7 +142,7 @@ export interface StudentData {
   ghanaianLanguage?: string;
   paymentStatus?: 'PAID' | 'UNPAID';
   indexNumber?: string;
-  uniqueCode?: string; // Added for 6-digit PIN storage
+  uniqueCode?: string;
   scores: Record<string, number>;
   sbaScores: Record<string, number>;
   examSubScores: Record<string, ExamSubScore>;
@@ -313,6 +312,8 @@ export interface MockResource {
   questionUrl?: string;
   schemeUrl?: string;
   generalReport?: string;
+  status?: 'DRAFT' | 'SUBMITTED' | 'VERIFIED';
+  submissionDate?: string;
   serializedPacks?: { A: string, B: string, C: string, D: string };
 }
 
@@ -327,61 +328,9 @@ export interface QuestionIndicatorMapping {
   weight: number;
 }
 
-export interface PaymentParticulars {
-  amount: number;
-  paidBy: string;
-  sentBy: string;
-  transactionId: string;
-  date: string;
-  isBulk: boolean;
-  isVerified: boolean;
-}
-
-export interface ForwardingData {
-  schoolId: string;
-  schoolName: string;
-  feedback: string;
-  pupilLanguages: Record<number, string>;
-  pupilPayments: Record<number, boolean>;
-  bulkPayment?: PaymentParticulars;
-  facilitatorRecommendations: Record<string, 'EXAMINER' | 'INVIGILATOR'>;
-  submissionTimestamp: string;
-  approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SERIALIZED';
-}
-
-export interface StaffRewardTrade {
-  id: string;
-  staffName: string;
-  staffEmail: string;
-  schoolName: string;
-  subject: string;
-  questionIds: string[];
-  submissionCount: number;
-  status: 'PENDING' | 'RANKED' | 'APPROVED' | 'PAID';
-  qualityRank?: number; // 1-10
-  approvedAmount?: number;
-  requestTimestamp: string;
-  approvalTimestamp?: string;
-}
-
-export interface SerializedPupil {
-  id: number;
-  name: string;
-  serial: 'A' | 'B' | 'C' | 'D';
-  questionCode: string;
-  indexNumber?: string;
-}
-
-export interface SerializationData {
-  schoolId: string;
-  schoolName: string;
-  mockSeries: string;
-  startDate: string;
-  examinerName: string;
-  chiefExaminerName: string;
-  pupils: SerializedPupil[];
-  timestamp: string;
-}
+/**
+ * MISSING TYPES ADDED TO RESOLVE IMPORT ERRORS
+ */
 
 export type BloomsScale = 'Knowledge' | 'Understanding' | 'Application' | 'Analysis' | 'Synthesis' | 'Evaluation';
 
@@ -405,8 +354,6 @@ export interface MasterQuestion {
   subStrandCode?: string;
   indicator: string;
   indicatorCode?: string;
-  facilitatorCode?: string;
-  facilitatorName?: string;
   questionText: string;
   instruction: string;
   correctKey: string;
@@ -415,28 +362,9 @@ export interface MasterQuestion {
   blooms: BloomsScale;
   parts: QuestionSubPart[];
   diagramUrl?: string;
+  facilitatorName?: string;
+  facilitatorCode?: string;
   isTraded?: boolean;
-  rating?: number; 
-  usageCount?: number;
-  wrongCount?: number;
-}
-
-export interface PracticeAssignment {
-  id: string;
-  title: string;
-  subject: string;
-  timeLimit: number; // in minutes
-  questions: MasterQuestion[];
-  pushedBy: string;
-  timestamp: string;
-}
-
-export interface PracticeResult {
-  studentId: number;
-  assignmentId: string;
-  score: number;
-  timeTaken: number;
-  completedAt: string;
 }
 
 export interface QuestionPack {
@@ -454,5 +382,65 @@ export interface SerializedExam {
   mockSeries: string;
   subject: string;
   packs: { A: QuestionPack; B: QuestionPack; C: QuestionPack; D: QuestionPack };
+  timestamp: string;
+}
+
+export interface SerializedPupil {
+  id: number;
+  name: string;
+  serial: 'A' | 'B' | 'C' | 'D';
+  questionCode: string;
+  indexNumber: string;
+}
+
+export interface SerializationData {
+  schoolId: string;
+  schoolName: string;
+  mockSeries: string;
+  startDate: string;
+  examinerName: string;
+  chiefExaminerName: string;
+  pupils: SerializedPupil[];
+  timestamp: string;
+}
+
+export interface PaymentParticulars {
+  transactionId: string;
+  amount: number;
+  date: string;
+}
+
+export interface ForwardingData {
+  schoolId: string;
+  schoolName: string;
+  feedback: string;
+  pupilLanguages: Record<number, string>;
+  pupilPayments: Record<number, boolean>;
+  bulkPayment?: PaymentParticulars;
+  facilitatorRecommendations: Record<string, 'EXAMINER' | 'INVIGILATOR'>;
+  submissionTimestamp: string;
+  approvalStatus: 'PENDING' | 'SERIALIZED';
+}
+
+export interface StaffRewardTrade {
+  id: string;
+  staffName: string;
+  subject: string;
+  schoolName: string;
+  questionIds: string[];
+  submissionCount: number;
+  qualityRank?: number;
+  status: 'PENDING' | 'RANKED' | 'APPROVED';
+  approvedAmount?: number;
+  approvalTimestamp?: string;
+}
+
+export interface PracticeAssignment {
+  id: string;
+  title: string;
+  subject: string;
+  timeLimit: number;
+  questions: MasterQuestion[];
+  pushedBy: string;
   timestamp: string;
 }
