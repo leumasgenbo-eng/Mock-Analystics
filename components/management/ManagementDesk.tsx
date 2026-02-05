@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import { StudentData, GlobalSettings, ProcessedStudent, StaffAssignment } from '../../types';
 
@@ -34,7 +35,8 @@ interface ManagementDeskProps {
   settings: GlobalSettings;
   onSettingChange: (key: keyof GlobalSettings, value: any) => void;
   onBulkUpdate: (updates: Partial<GlobalSettings>) => void;
-  onSave: () => void;
+  /* Updated onSave signature to allow optional overrides as required by ScoreEntryPortal */
+  onSave: (overrides?: any) => void;
   processedSnapshot: ProcessedStudent[];
   onLoadDummyData: () => void;
   onClearData: () => void;
@@ -134,7 +136,6 @@ const ManagementDesk: React.FC<ManagementDeskProps> = ({
             <EnrolmentForwardingPortal 
               settings={settings} 
               students={students} 
-              // Fix: Added missing setStudents prop to satisfy EnrolmentForwardingPortalProps
               setStudents={setStudents}
               facilitators={facilitators} 
               isFacilitator={isFacilitator}

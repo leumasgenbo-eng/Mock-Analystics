@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { calculateClassStatistics, processStudentData } from './utils';
 import { GlobalSettings, StudentData, StaffAssignment, SchoolRegistryEntry, ProcessedStudent, MasterQuestion } from './types';
@@ -81,12 +82,12 @@ const App: React.FC = () => {
   }, [settings, students, facilitators]);
 
   /**
-   * ADVANCED MIRROR SYNC ENGINE
-   * 1. Persistence Layer: AppState Snapshots (uba_persistence)
-   * 2. Identity Hub: Universal Security Keys (uba_identities)
-   * 3. Specialist Registry: Faculty Records (uba_facilitators)
-   * 4. Candidate Registry: Pupil Records (uba_pupils)
-   * 5. Question Registry: Mirroring from Persistence blobs to uba_questions
+   * ADVANCED QUAD-MIRROR SYNC ENGINE (HQ INTEGRATED)
+   * 1. Persistence Layer: uba_persistence
+   * 2. Identity Registry: uba_identities
+   * 3. Specialist Registry: uba_facilitators
+   * 4. Candidate Registry: uba_pupils
+   * 5. Dashboard Broadcast: registry_${hubId}
    */
   const handleSaveAll = async (overrides?: { settings?: GlobalSettings, students?: StudentData[], facilitators?: Record<string, StaffAssignment> }) => {
     const activeSettings = overrides?.settings || stateRef.current.settings;
@@ -106,7 +107,7 @@ const App: React.FC = () => {
     try {
       const timestamp = new Date().toISOString();
       
-      // MIRROR 1: Persistence Blob Shards
+      // MIRROR 1: Persistence Blob Shards (Source of Truth for App Recovery)
       const persistenceUpdates = [
         { id: `${hubId}_settings`, hub_id: hubId, payload: activeSettings, last_updated: timestamp },
         { id: `${hubId}_students`, hub_id: hubId, payload: activeStudents, last_updated: timestamp },
@@ -114,7 +115,7 @@ const App: React.FC = () => {
       ];
       await supabase.from('uba_persistence').upsert(persistenceUpdates);
 
-      // MIRROR 2 & 3: Faculty Relational Registry
+      // MIRROR 2 & 3: Faculty Relational Registry (Mirrors Credentials & Staff Particulars)
       const facilitatorList = Object.values(activeFacs) as StaffAssignment[];
       if (facilitatorList.length > 0) {
         const staffIdentities = facilitatorList.map(f => ({
@@ -143,19 +144,19 @@ const App: React.FC = () => {
         await supabase.from('uba_facilitators').upsert(staffDetails);
       }
 
-      // MIRROR 2 & 4: Pupil Relational Registry
+      // MIRROR 2 & 4: Pupil Relational Registry (Mirrors Credentials & Candidate Particulars)
       if (activeStudents.length > 0) {
         const pupilIdentities = activeStudents.map(s => ({
-          email: s.parentEmail?.toLowerCase().trim() || `${s.indexNumber}@unitedbaylor.edu.gh`,
+          email: s.parentEmail?.toLowerCase().trim() || `${s.indexNumber || s.id}@unitedbaylor.edu.gh`,
           full_name: s.name.toUpperCase().trim(),
-          node_id: s.indexNumber!,
+          node_id: s.indexNumber || s.id.toString(),
           hub_id: hubId,
           role: 'pupil',
           unique_code: s.uniqueCode
         }));
 
         const pupilDetails = activeStudents.map(s => ({
-          student_id: s.indexNumber,
+          student_id: s.indexNumber || s.id.toString(),
           name: s.name.toUpperCase().trim(),
           gender: s.gender === 'F' ? 'F' : 'M',
           class_name: activeSettings.termInfo || 'BASIC 9',
@@ -168,11 +169,11 @@ const App: React.FC = () => {
         await supabase.from('uba_pupils').upsert(pupilDetails);
       }
 
-      // MIRROR 5: Question Extraction & Relational Sync
-      // We scan persistence for question shards and push them to uba_questions
+      // MIRROR 5: Question Extraction & Relational Sync (Likely Shards to uba_questions)
       const { data: persistenceQuestions } = await supabase
         .from('uba_persistence')
         .select('payload')
+        .eq('hub_id', hubId)
         .like('id', 'likely_%');
 
       if (persistenceQuestions && persistenceQuestions.length > 0) {
@@ -206,37 +207,42 @@ const App: React.FC = () => {
         }
       }
 
-      // MIRROR 6: Analytical Score Registry
-      const activeMock = activeSettings.activeMock;
-      const scoresPayload = activeStudents.flatMap(s => {
-         const mockSet = s.mockData?.[activeMock];
-         if (!mockSet) return [];
-         return Object.keys(mockSet.scores).map(subject => ({
-            hub_id: hubId,
-            student_id: s.indexNumber || s.id.toString(),
-            mock_series: activeMock,
-            subject,
-            total_score: (mockSet.examSubScores[subject]?.sectionA || 0) + (mockSet.examSubScores[subject]?.sectionB || 0),
-            sba_score: mockSet.sbaScores[subject] || 0,
-            section_a: mockSet.examSubScores[subject]?.sectionA || 0,
-            section_b: mockSet.examSubScores[subject]?.sectionB || 0,
-            academic_year: activeSettings.academicYear || "2024/2025"
-         }));
+      // MIRROR 6: HQ DASHBOARD BROADCAST (The "Network Ledger" updater)
+      // Calculate metrics to push to the SuperAdmin registry blob
+      const stats = calculateClassStatistics(activeStudents, activeSettings);
+      const processed = processStudentData(stats, activeStudents, {}, activeSettings);
+      const avgAgg = processed.length > 0 ? processed.reduce((sum, s) => sum + (s.bestSixAggregate || 0), 0) / processed.length : 36;
+
+      await supabase.from('uba_persistence').upsert({
+         id: `registry_${hubId}`,
+         hub_id: hubId,
+         payload: {
+            ...activeSettings,
+            id: hubId,
+            name: activeSettings.schoolName,
+            status: 'active',
+            lastActivity: timestamp,
+            studentCount: activeStudents.length,
+            avgAggregate: avgAgg,
+            fullData: { // Minimal summary for HQ Registry View
+              settings: activeSettings,
+              students: activeStudents.length, // Just counts to keep blob light
+              staff: facilitatorList.length
+            }
+         },
+         last_updated: timestamp
       });
 
-      if (scoresPayload.length > 0) {
-         await supabase.from('uba_mock_scores').upsert(scoresPayload);
-      }
-
+      // Audit Log
       await supabase.from('uba_activity_logs').insert({
           node_id: hubId,
           staff_id: loggedInUser?.email || 'SYSTEM_AUTO',
           action_type: 'GLOBAL_MIRROR_SYNC',
-          context_data: { status: 'COMMITTED', pupils: activeStudents.length, staff: facilitatorList.length, mock: activeMock }
+          context_data: { status: 'COMMITTED', pupils: activeStudents.length, staff: facilitatorList.length, mock: activeSettings.activeMock }
       });
       
     } catch (e) {
-      console.warn("[MIRROR SYNC FAULT]", e);
+      console.warn("[MIRROR SYNC HANDSHAKE FAULT]", e);
     }
   };
 
@@ -361,7 +367,8 @@ const App: React.FC = () => {
         <SchoolRegistrationPortal 
           settings={settings} 
           onBulkUpdate={(u) => setSettings(prev => ({...prev, ...u}))}
-          onSave={() => handleSaveAll()}
+          /* Fixed: Wrapped async handleSaveAll in sync block to satisfy void return requirement */
+          onSave={() => { void handleSaveAll(); }}
           onComplete={handleOnboardingComplete}
           onResetStudents={() => setStudents([])}
           onSwitchToLogin={() => setIsRegistering(false)}
@@ -376,7 +383,8 @@ const App: React.FC = () => {
     </div>
   );
 
-  if (isSuperAdmin) return <SuperAdminPortal onExit={handleLogout} onRemoteView={async (id)=>{ await syncCloudShards(id); setCurrentHubId(id); setIsSuperAdmin(false); setActiveRole('school_admin'); }} />;
+  /* Fixed: Wrapped syncCloudShards promise in sync block to satisfy onRemoteView's expected void return type */
+  if (isSuperAdmin) return <SuperAdminPortal onExit={handleLogout} onRemoteView={(id)=>{ void syncCloudShards(id).then(() => { setCurrentHubId(id); setIsSuperAdmin(false); setActiveRole('school_admin'); }); }} />;
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col font-sans">
@@ -392,12 +400,15 @@ const App: React.FC = () => {
       </div>
       <div className="flex-1 overflow-auto p-4 md:p-8">
         {viewMode==='home' && <HomeDashboard students={processedStudents} settings={settings} setViewMode={setViewMode as any} />}
-        {viewMode==='master' && <MasterSheet students={processedStudents} stats={stats} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); handleSaveAll({settings:next}); }} facilitators={facilitators} isFacilitator={activeRole === 'facilitator'} />}
-        {viewMode==='series' && <SeriesBroadSheet students={students} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); handleSaveAll({settings:next}); }} currentProcessed={processedStudents.map(ps=>({id:ps.id, bestSixAggregate:ps.bestSixAggregate, rank:ps.rank, totalScore:ps.totalScore, category:ps.category}))} />}
+        {/* Fixed: Wrapped async handleSaveAll in sync block and used void operator to ensure void return type satisfaction */}
+        {viewMode==='master' && <MasterSheet students={processedStudents} stats={stats} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); void handleSaveAll({settings:next}); }} facilitators={facilitators} isFacilitator={activeRole === 'facilitator'} />}
+        {/* Fixed: Wrapped async handleSaveAll in sync block and used void operator to ensure void return type satisfaction */}
+        {viewMode==='series' && <SeriesBroadSheet students={students} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); void handleSaveAll({settings:next}); }} currentProcessed={processedStudents.map(ps=>({id:ps.id, bestSixAggregate:ps.bestSixAggregate, rank:ps.rank, totalScore:ps.totalScore, category:ps.category}))} />}
         {viewMode==='reports' && (
           <div className="space-y-8">
             <input type="text" placeholder="Search..." value={reportSearchTerm} onChange={(e)=>setReportSearchTerm(e.target.value)} className="w-full p-6 rounded-3xl border-2 border-gray-100 shadow-sm font-bold no-print outline-none" />
-            {processedStudents.filter(s=>(s.name||"").toLowerCase().includes(reportSearchTerm.toLowerCase())).map(s=><ReportCard key={s.id} student={s} stats={stats} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); handleSaveAll({settings:next}); }} classAverageAggregate={classAvgAggregate} totalEnrolled={processedStudents.length} isFacilitator={activeRole === 'facilitator'} loggedInUser={loggedInUser} />)}
+            {/* Fixed: Wrapped async handleSaveAll in sync block and used void operator to ensure void return type satisfaction */}
+            {processedStudents.filter(s=>(s.name||"").toLowerCase().includes(reportSearchTerm.toLowerCase())).map(s=><ReportCard key={s.id} student={s} stats={stats} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); void handleSaveAll({settings:next}); }} classAverageAggregate={classAvgAggregate} totalEnrolled={processedStudents.length} isFacilitator={activeRole === 'facilitator'} loggedInUser={loggedInUser} />)}
           </div>
         )}
         {viewMode==='management' && (
@@ -409,8 +420,10 @@ const App: React.FC = () => {
             subjects={SUBJECT_LIST} 
             settings={settings} 
             onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} 
-            onBulkUpdate={(u)=>{ const next={...settings,...u}; setSettings(next); handleSaveAll({settings:next}); }} 
-            onSave={(ov)=>handleSaveAll(ov)} 
+            /* Fixed: Wrapped async handleSaveAll in sync block and used void operator to ensure void return type satisfaction */
+            onBulkUpdate={(u)=>{ const next={...settings,...u}; setSettings(next); void handleSaveAll({settings:next}); }} 
+            /* Fixed: Changed expression-bodied arrow function to block body and handled handleSaveAll promise to satisfy void return type */
+            onSave={(ov)=>{ void handleSaveAll(ov); }} 
             processedSnapshot={processedStudents} 
             onLoadDummyData={()=>{}} 
             onClearData={()=>{}} 

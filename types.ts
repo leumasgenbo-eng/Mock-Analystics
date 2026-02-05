@@ -1,4 +1,5 @@
 
+
 export interface SubjectScore {
   subject: string;
   score: number;
@@ -120,10 +121,12 @@ export interface SchoolRegistryEntry {
   serializationStatus?: 'PENDING' | 'SERIALIZED';
   remarkTelemetry?: RemarkTelemetry;
   verificationLogs?: Record<string, VerificationEntry[]>;
+  /* Updated fullData to support minimal summary payloads with numeric counts */
   fullData?: {
     settings: GlobalSettings;
-    students: StudentData[];
-    facilitators: Record<string, StaffAssignment>;
+    students?: StudentData[] | number;
+    facilitators?: Record<string, StaffAssignment>;
+    staff?: number;
   };
 }
 
