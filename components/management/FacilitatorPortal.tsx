@@ -27,60 +27,17 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
   const createEmptyRegister = (): InvigilationSlot[] => 
     Array.from({ length: 9 }, () => ({ dutyDate: '', timeSlot: '', subject: '' }));
 
+  // Centralized sync logic now handled by App.tsx's handleSaveAll for reliability across mirrors.
   const handleGlobalFacultySync = async () => {
     const facArray = Object.values(facilitators) as StaffAssignment[];
     if (facArray.length === 0) return alert("No facilitators found to sync.");
     setIsEnrolling(true);
     try {
+      // central engine handles uba_persistence, uba_identities, and uba_facilitators in one handshake.
       await onSave({ facilitators });
       alert(`FACULTY CLOUD SYNC COMPLETE: ${facArray.length} specialists verified across triple mirrors.`);
     } catch (err: any) {
       alert("Sync Failure: " + err.message);
-    } finally {
-      setIsEnrolling(false);
-    }
-  };
-
-  const handleAwardMerit = async (email: string) => {
-    const amount = prompt("Enter Bonus Merit Shards to award:");
-    if (!amount || isNaN(Number(amount))) return;
-    const numericAmount = Number(amount);
-    const reason = prompt("Enter award description (e.g., Exam Moderation Excellence):") || "Administrative Bonus Merit award.";
-
-    setIsEnrolling(true);
-    try {
-      // 1. Update Identity Balance
-      const { data: currentIdent } = await supabase.from('uba_identities').select('merit_balance').eq('email', email).single();
-      const nextBalance = (currentIdent?.merit_balance || 0) + numericAmount;
-      await supabase.from('uba_identities').update({ merit_balance: nextBalance }).eq('email', email);
-
-      // 2. Update Facilitator Shard
-      await supabase.from('uba_facilitators').update({ merit_balance: nextBalance }).eq('email', email);
-
-      // 3. Mirror to Transaction Ledger
-      await supabase.from('uba_transaction_ledger').insert({
-        identity_email: email,
-        hub_id: settings.schoolNumber,
-        event_category: 'ROYALTY_CREDIT',
-        type: 'CREDIT',
-        asset_type: 'MERIT_TOKEN',
-        amount: numericAmount,
-        description: `Bonus Award: ${reason}`
-      });
-
-      // 4. Update local state
-      const nextFacs = { ...facilitators };
-      if (nextFacs[email]) {
-        nextFacs[email].account = {
-          ...nextFacs[email].account,
-          meritTokens: (nextFacs[email].account?.meritTokens || 0) + numericAmount
-        };
-      }
-      setFacilitators(nextFacs);
-      
-      alert(`MERIT AWARDED: ${numericAmount} shards mirrored to staff ledger.`);
-    } catch (err: any) {
-      alert(`Award Error: ${err.message}`);
     } finally {
       setIsEnrolling(false);
     }
@@ -185,6 +142,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
         }
       }
       setFacilitators(nextFacs);
+      // Central engine will perform the triple mirror sync on uba_identities, facilitators and persistence.
       onSave({ facilitators: nextFacs });
       alert(`FACULTY BUFFERED: ${dataLines.length} specialists added and mirrored to cloud.`);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -223,6 +181,7 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
       nextFacilitators[targetEmail] = staff;
       
       setFacilitators(nextFacilitators);
+      // central engine handles uba_persistence, uba_identities, and uba_facilitators in one handshake.
       await onSave({ facilitators: nextFacilitators });
       
       setNewStaff({ name: '', email: '', role: 'FACILITATOR', subject: '', category: 'BASIC_SUBJECT_LEVEL', uniqueCode: '' });
@@ -308,18 +267,11 @@ const FacilitatorPortal: React.FC<FacilitatorPortalProps> = ({
                            <span className="px-3 py-0.5 rounded-lg text-[8px] font-black uppercase bg-emerald-50 text-emerald-600">Faculty Verified</span>
                         </div>
                         <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Identity: {f.name} | ID: {f.enrolledId}</div>
-                        <div className="flex gap-4 mt-2">
-                           <span className="text-[8px] font-black text-blue-600 uppercase tracking-widest">Merit: {f.account?.meritTokens || 0}</span>
-                           <span className="text-[8px] font-black text-emerald-600 uppercase tracking-widest">Vault: GHS {f.account?.monetaryCredits.toFixed(2) || '0.00'}</span>
-                        </div>
                      </div>
                   </div>
                   <div className="flex gap-3">
                     {!isFacilitator && (
                       <>
-                        <button onClick={() => handleAwardMerit(f.email)} className="bg-indigo-50 text-indigo-600 px-4 py-2.5 rounded-xl font-black text-[10px] uppercase border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-2 shadow-sm">
-                           Award Merit
-                        </button>
                         <button onClick={() => handleWhatsAppForward(f)} className="bg-green-50 text-green-600 px-4 py-2.5 rounded-xl font-black text-[10px] uppercase border border-green-100 hover:bg-green-600 hover:text-white transition-all flex items-center gap-2 shadow-sm" title="Share Credentials via WhatsApp">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-7.6 8.38 8.38 0 0 1 3.8.9L21 3.5Z"/></svg>
                           Share Keys

@@ -24,7 +24,7 @@ const ReportBrandingHeader: React.FC<ReportBrandingHeaderProps> = ({
     <div className={`text-center relative border-b-[4px] border-double border-blue-950 pb-8 mb-8 w-full font-sans animate-in fade-in duration-1000`}>
       {/* Institutional Network Metadata */}
       <div className="text-[8px] font-black text-blue-600 uppercase tracking-[0.5em] mb-6 flex justify-center items-center gap-3 no-print">
-        <div className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.6)]"></div>
+        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.6)]"></div>
         <span>NETWORK HUB NODE:</span>
         <span className="font-mono bg-blue-50 px-4 py-1 rounded-lg border border-blue-100">
           {readOnly ? (settings.schoolNumber || "UBA-NODE-2025") : (

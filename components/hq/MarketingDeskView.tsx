@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
 import { ForwardingData, StaffRewardTrade, MasterQuestion, BloomsScale } from '../../types';
@@ -54,7 +53,7 @@ const MarketingDeskView: React.FC = () => {
         let maxSim = 0;
         let isExact = false;
 
-        // Compare against Master Bank
+        // Compare against Master Bank (excluding self if already mirrored)
         masterBank.forEach(mq => {
           if (mq.id === q.id) return;
           if (mq.questionText.trim().toLowerCase() === q.questionText.trim().toLowerCase()) {
@@ -100,58 +99,14 @@ const MarketingDeskView: React.FC = () => {
   };
 
   const handleApproveTrade = async (id: string, amount: number) => {
-    const trade = rewardTrades.find(t => t.id === id);
-    if (!trade) return;
-
-    try {
-      // 1. Identify Facilitator Email (from UBA Identities if not in trade)
-      const { data: ident } = await supabase.from('uba_identities')
-        .select('email, monetary_balance, hub_id')
-        .eq('full_name', trade.staffName.toUpperCase())
-        .eq('role', 'facilitator')
-        .maybeSingle();
-
-      if (!ident) throw new Error("Facilitator Identity not found in Global Shard.");
-
-      const facilitatorEmail = ident.email;
-      const hubId = ident.hub_id;
-
-      // 2. Perform Transaction Mirroring to Ledger
-      await supabase.from('uba_transaction_ledger').insert({
-        identity_email: facilitatorEmail,
-        hub_id: hubId,
-        event_category: 'TRADE_EXCHANGE',
-        type: 'CREDIT',
-        asset_type: 'MONETARY_GHS',
-        amount: amount,
-        description: `Trade Approved: HQ Audit confirmed value for ${trade.questionIds.length} shards in ${trade.subject}.`
-      });
-
-      // 3. Update Balance Shards
-      const nextBal = (ident.monetary_balance || 0) + amount;
-      await supabase.from('uba_identities').update({ monetary_balance: nextBal }).eq('email', facilitatorEmail);
-      await supabase.from('uba_facilitators').update({ monetary_balance: nextBal }).eq('email', facilitatorEmail);
-
-      // 4. Update Trade Record
-      const nextTrades = rewardTrades.map(t => t.id === id ? ({ 
-        ...t, 
-        approvedAmount: amount, 
-        status: 'APPROVED', 
-        approvalTimestamp: new Date().toISOString() 
-      } as StaffRewardTrade) : t);
-      
-      setRewardTrades(nextTrades);
-      
-      await supabase.from('uba_persistence').upsert({
-        id: 'global_staff_rewards',
-        payload: nextTrades,
-        last_updated: new Date().toISOString()
-      });
-
-      alert(`REWARD SHARD APPROVED: GHS ${amount.toFixed(2)} mirrored to staff vault.`);
-    } catch (err: any) {
-      alert(`Approval Error: ${err.message}`);
-    }
+    const nextTrades = rewardTrades.map(t => t.id === id ? ({ ...t, approvedAmount: amount, status: 'APPROVED', approvalTimestamp: new Date().toISOString() } as StaffRewardTrade) : t);
+    setRewardTrades(nextTrades);
+    await supabase.from('uba_persistence').upsert({
+      id: 'global_staff_rewards',
+      payload: nextTrades,
+      last_updated: new Date().toISOString()
+    });
+    alert("REWARD SHARD APPROVED AND DISPATCHED.");
   };
 
   return (

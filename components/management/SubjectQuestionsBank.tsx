@@ -19,6 +19,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
   const fetchBank = useCallback(async () => {
     setIsLoading(true);
     try {
+      // MASTER RELATIONAL QUERY: Fetching directly from the uba_questions table
       const { data, error } = await supabase
         .from('uba_questions')
         .select('*')
@@ -52,6 +53,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
       }
     } catch (e: any) {
       console.warn("[BANK RETRIEVAL ERROR]", e.message);
+      // Fallback: Attempt to parse persistence shards if relational query fails
       const { data: persistenceData } = await supabase.from('uba_persistence').select('payload').like('id', 'likely_%');
       if (persistenceData) {
         const flat: MasterQuestion[] = [];
@@ -112,36 +114,9 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
     }
   };
 
-  const handleDownloadTextFile = async () => {
+  const handleDownloadTextFile = () => {
     if (basket.length === 0) return alert("Basket is vacant.");
     
-    // 1. Transaction Mirroring: Resource Extraction Fee (1 Merit Token)
-    if (activeFacilitator?.email) {
-      setIsSyncing(true);
-      try {
-        const { data: currentIdent } = await supabase.from('uba_identities').select('merit_balance').eq('email', activeFacilitator.email).single();
-        const nextBalance = (currentIdent?.merit_balance || 0) - 1;
-        
-        await supabase.from('uba_identities').update({ merit_balance: nextBalance }).eq('email', activeFacilitator.email);
-        await supabase.from('uba_facilitators').update({ merit_balance: nextBalance }).eq('email', activeFacilitator.email);
-        
-        await supabase.from('uba_transaction_ledger').insert({
-          identity_email: activeFacilitator.email,
-          hub_id: settings.schoolNumber,
-          event_category: 'DATA_DOWNLOAD',
-          type: 'DEBIT',
-          asset_type: 'MERIT_TOKEN',
-          amount: 1,
-          description: `Resource Extraction Fee: ${selectedSubject} (${basket.length} shards).`
-        });
-      } catch (e: any) {
-        console.warn("Ledger Mirror Sync Failed", e.message);
-      } finally {
-        setIsSyncing(false);
-      }
-    }
-
-    // 2. Generate and trigger download
     let content = `UNITED BAYLOR ACADEMY - ASSESSMENT SHARDS\n`;
     content += `SUBJECT: ${selectedSubject.toUpperCase()}\n`;
     content += `DATE: ${new Date().toLocaleDateString()}\n`;
@@ -173,7 +148,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
     link.download = `UBA_Shards_${selectedSubject.replace(/\s/g, '_')}.txt`;
     link.click();
     URL.revokeObjectURL(url);
-    alert("EXTRACTION SUCCESSFUL: Questions and Answers Partitioned. 1 Merit Shard debited for extraction protocol.");
+    alert("EXTRACTION SUCCESSFUL: Questions and Answers Partitioned.");
   };
 
   return (
@@ -181,7 +156,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
       {isSyncing && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex flex-col items-center justify-center space-y-6">
            <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-           <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Establishing SQL Handshake...</p>
+           <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em]">Mirroring Shards to Cloud Shard Table...</p>
         </div>
       )}
 
@@ -237,7 +212,6 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
                  >
                    Download Notepad (.txt)
                  </button>
-                 <p className="text-[7px] text-center text-slate-400 uppercase font-black tracking-widest">Fee: 1 Merit Shard per Extraction</p>
               </div>
            </div>
         </div>

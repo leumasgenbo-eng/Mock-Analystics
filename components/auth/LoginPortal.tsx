@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { supabase } from '../../supabaseClient';
 
@@ -36,12 +37,13 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
     }
 
     try {
+      // HQ Master Handshake logic remains functional but hidden from UI
       if (inputKey === "UBA-HQ-MASTER-2025" && inputName === "HQ CONTROLLER") {
         onSuperAdminLogin();
         return;
       }
 
-      // 1. Fetch from Master Identity Registry
+      // MASTER HANDSHAKE: Query identity registry for either Master Access Key (unique_code) OR Node ID
       const { data: identity, error: idError } = await supabase
         .from('uba_identities')
         .select('*')
@@ -55,6 +57,7 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
         throw new Error("Handshake Refused: Identity Mismatch in Master Registry.");
       }
 
+      // Role Verification Sector
       if (identity.role === 'super_admin') {
         onSuperAdminLogin();
         return;
@@ -70,25 +73,11 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
         throw new Error(`Gate Refusal: This identity shard belongs to the ${identity.role.replace('_', ' ')} sector.`);
       }
 
-      // 2. FOR FACILITATORS: Fetch their linked subject from the specialist table
-      let facilitatorSubject = 'GENERAL';
-      if (identity.role === 'facilitator') {
-        const { data: facData } = await supabase
-          .from('uba_facilitators')
-          .select('taught_subject')
-          .eq('email', identity.email)
-          .maybeSingle();
-        
-        if (facData?.taught_subject) {
-          facilitatorSubject = facData.taught_subject;
-        }
-      }
-
       await supabase.from('uba_activity_logs').insert({
         node_id: identity.hub_id,
         staff_id: identity.email,
         action_type: 'IDENTITY_RECALL',
-        context_data: { login_time: new Date().toISOString(), platform: 'ASSESSMENT_HUB', subject: facilitatorSubject }
+        context_data: { login_time: new Date().toISOString(), platform: 'ASSESSMENT_HUB' }
       });
 
       onLoginSuccess(identity.hub_id, {
@@ -96,7 +85,7 @@ const LoginPortal: React.FC<LoginPortalProps> = ({ onLoginSuccess, onSuperAdminL
         nodeId: identity.node_id,
         role: identity.role,
         email: identity.email,
-        subject: facilitatorSubject
+        subject: identity.role === 'facilitator' ? (identity.teaching_category || 'GENERAL') : undefined
       });
 
     } catch (err: any) { 
