@@ -73,6 +73,7 @@ const EnrolmentForwardingPortal: React.FC<EnrolmentForwardingPortalProps> = ({ s
         approvalStatus: 'PENDING'
       };
 
+      // 1. Persist Forwarding Shard
       await supabase.from('uba_persistence').upsert({
         id: `forward_${settings.schoolNumber}`,
         hub_id: settings.schoolNumber,
@@ -80,7 +81,20 @@ const EnrolmentForwardingPortal: React.FC<EnrolmentForwardingPortalProps> = ({ s
         last_updated: new Date().toISOString()
       });
 
-      alert("DATA DISPATCHED: Handshaking with SuperAdmin for Serialization.");
+      // 2. Mirror Bulk Payment to Ledger if present
+      if (bulkPayment.transactionId && bulkPayment.amount) {
+        await supabase.from('uba_transaction_ledger').insert({
+          identity_email: settings.registrantEmail || 'admin@hub.uba',
+          hub_id: settings.schoolNumber,
+          event_category: 'ROYALTY_CREDIT', // Treated as institutional credit
+          type: 'CREDIT',
+          asset_type: 'MONETARY_GHS',
+          amount: bulkPayment.amount,
+          description: `Institutional Bulk Clearance: ${settings.schoolName} (Ref: ${bulkPayment.transactionId})`
+        });
+      }
+
+      alert("DATA DISPATCHED: Handshaking with SuperAdmin for Serialization. Payment shard mirrored to ledger.");
     } catch (err: any) {
       alert(`Dispatch Fault: ${err.message}`);
     } finally {
@@ -129,7 +143,7 @@ const EnrolmentForwardingPortal: React.FC<EnrolmentForwardingPortalProps> = ({ s
                         <th className="px-6 py-5 text-center">Clearance</th>
                      </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-gray-100">
                      {students.map(s => (
                         <tr key={s.id} className="hover:bg-slate-50 transition-colors">
                            <td className="px-8 py-5 font-black uppercase text-slate-800 text-xs truncate max-w-[180px]">{s.name}</td>
