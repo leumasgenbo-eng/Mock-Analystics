@@ -32,7 +32,8 @@ const PupilGlobalMatrix: React.FC<PupilGlobalMatrixProps> = ({ registry, student
   const rankingData: GlobalPupilRow[] = useMemo(() => {
     const list: GlobalPupilRow[] = [];
     registry.forEach(school => {
-      if (!school.fullData?.students) return;
+      // Fix: Added Array.isArray check to safely handle the union type (number | StudentData[])
+      if (!school.fullData || !Array.isArray(school.fullData.students)) return;
       const schoolSettings = school.fullData.settings;
       const activeMock = schoolSettings.activeMock;
       school.fullData.students.forEach(s => {

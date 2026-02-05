@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { SchoolRegistryEntry, ExamSubScore, StaffAssignment } from '../../types';
 
@@ -18,6 +19,10 @@ const NetworkRewardsView: React.FC<NetworkRewardsViewProps> = ({ registry }) => 
 
       const students = data.students;
       const facilitators = data.facilitators;
+      
+      // Fix: Ensure students is an array and facilitators is defined to avoid errors when using .filter or iteration
+      if (!Array.isArray(students) || !facilitators) return;
+
       const activeMock = data.settings.activeMock;
       const mockNames = data.settings.committedMocks || [];
       const prevMockName = mockNames[mockNames.indexOf(activeMock) - 1];

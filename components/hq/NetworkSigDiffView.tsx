@@ -15,6 +15,10 @@ const NetworkSigDiffView: React.FC<NetworkSigDiffViewProps> = ({ registry }) => 
       if (!data) return null;
 
       const students = data.students;
+      
+      // Fix: Added Array.isArray check to safely handle the union type (number | StudentData[]) before using flatMap and map
+      if (!Array.isArray(students)) return null;
+
       const latestYear = new Date().getFullYear().toString();
       
       // Fix: Cast explicitly to number[] to resolve 'unknown' arithmetic errors
@@ -23,7 +27,7 @@ const NetworkSigDiffView: React.FC<NetworkSigDiffViewProps> = ({ registry }) => 
       const sigDiff = MOCK_STANDARD - beceMean;
 
       // Group by subject for more granular network view
-      const subjects = Object.keys(data.facilitators);
+      const subjects = Object.keys(data.facilitators || {});
       const subjectDeltas = subjects.map(sub => {
          const subResults = students.map(s => s.beceResults?.[latestYear]?.grades[sub]).filter(x => x !== undefined) as number[];
          const subMean = subResults.length > 0 ? subResults.reduce((a,b) => a+b, 0) / subResults.length : 9;

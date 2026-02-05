@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { calculateClassStatistics, processStudentData } from './utils';
 import { GlobalSettings, StudentData, StaffAssignment, SchoolRegistryEntry, ProcessedStudent, MasterQuestion } from './types';
@@ -16,6 +15,9 @@ import MasterSheet from './components/reports/MasterSheet';
 import ReportCard from './components/reports/ReportCard';
 import SeriesBroadSheet from './components/reports/SeriesBroadSheet';
 import SuperAdminPortal from './components/hq/SuperAdminPortal';
+
+// Pupil Sector
+import PupilDashboard from './components/pupil/PupilDashboard';
 
 import { SUBJECT_LIST, DEFAULT_THRESHOLDS, DEFAULT_NORMALIZATION, DEFAULT_CATEGORY_THRESHOLDS } from './constants';
 
@@ -81,14 +83,6 @@ const App: React.FC = () => {
     stateRef.current = { settings, students, facilitators };
   }, [settings, students, facilitators]);
 
-  /**
-   * ADVANCED QUAD-MIRROR SYNC ENGINE (HQ INTEGRATED)
-   * 1. Persistence Layer: uba_persistence
-   * 2. Identity Registry: uba_identities
-   * 3. Specialist Registry: uba_facilitators
-   * 4. Candidate Registry: uba_pupils
-   * 5. Dashboard Broadcast: registry_${hubId}
-   */
   const handleSaveAll = async (overrides?: { settings?: GlobalSettings, students?: StudentData[], facilitators?: Record<string, StaffAssignment> }) => {
     const activeSettings = overrides?.settings || stateRef.current.settings;
     const activeStudents = overrides?.students || stateRef.current.students;
@@ -106,8 +100,6 @@ const App: React.FC = () => {
     
     try {
       const timestamp = new Date().toISOString();
-      
-      // MIRROR 1: Persistence Blob Shards (Source of Truth for App Recovery)
       const persistenceUpdates = [
         { id: `${hubId}_settings`, hub_id: hubId, payload: activeSettings, last_updated: timestamp },
         { id: `${hubId}_students`, hub_id: hubId, payload: activeStudents, last_updated: timestamp },
@@ -115,7 +107,6 @@ const App: React.FC = () => {
       ];
       await supabase.from('uba_persistence').upsert(persistenceUpdates);
 
-      // MIRROR 2 & 3: Faculty Relational Registry (Mirrors Credentials & Staff Particulars)
       const facilitatorList = Object.values(activeFacs) as StaffAssignment[];
       if (facilitatorList.length > 0) {
         const staffIdentities = facilitatorList.map(f => ({
@@ -139,12 +130,10 @@ const App: React.FC = () => {
           monetary_balance: f.account?.monetaryCredits || 0,
           invigilation_data: f.invigilations
         }));
-
         await supabase.from('uba_identities').upsert(staffIdentities);
         await supabase.from('uba_facilitators').upsert(staffDetails);
       }
 
-      // MIRROR 2 & 4: Pupil Relational Registry (Mirrors Credentials & Candidate Particulars)
       if (activeStudents.length > 0) {
         const pupilIdentities = activeStudents.map(s => ({
           email: s.parentEmail?.toLowerCase().trim() || `${s.indexNumber || s.id}@unitedbaylor.edu.gh`,
@@ -164,12 +153,10 @@ const App: React.FC = () => {
           is_jhs_level: true,
           enrollment_status: 'ACTIVE'
         }));
-
         await supabase.from('uba_identities').upsert(pupilIdentities);
         await supabase.from('uba_pupils').upsert(pupilDetails);
       }
 
-      // MIRROR 5: Question Extraction & Relational Sync (Likely Shards to uba_questions)
       const { data: persistenceQuestions } = await supabase
         .from('uba_persistence')
         .select('payload')
@@ -201,14 +188,11 @@ const App: React.FC = () => {
             status: 'PENDING'
           })) : [];
         });
-
         if (questionsToMirror.length > 0) {
           await supabase.from('uba_questions').upsert(questionsToMirror, { onConflict: 'external_id' });
         }
       }
 
-      // MIRROR 6: HQ DASHBOARD BROADCAST (The "Network Ledger" updater)
-      // Calculate metrics to push to the SuperAdmin registry blob
       const stats = calculateClassStatistics(activeStudents, activeSettings);
       const processed = processStudentData(stats, activeStudents, {}, activeSettings);
       const avgAgg = processed.length > 0 ? processed.reduce((sum, s) => sum + (s.bestSixAggregate || 0), 0) / processed.length : 36;
@@ -224,16 +208,15 @@ const App: React.FC = () => {
             lastActivity: timestamp,
             studentCount: activeStudents.length,
             avgAggregate: avgAgg,
-            fullData: { // Minimal summary for HQ Registry View
+            fullData: { 
               settings: activeSettings,
-              students: activeStudents.length, // Just counts to keep blob light
+              students: activeStudents.length, 
               staff: facilitatorList.length
             }
          },
          last_updated: timestamp
       });
 
-      // Audit Log
       await supabase.from('uba_activity_logs').insert({
           node_id: hubId,
           staff_id: loggedInUser?.email || 'SYSTEM_AUTO',
@@ -278,7 +261,6 @@ const App: React.FC = () => {
       setSettings(finalSettings);
       setStudents(finalStudents);
       setFacilitators(finalFacilitators);
-      
       setIsSyncing(false);
       return { settings: finalSettings, students: finalStudents, facilitators: finalFacilitators };
     } catch (e) { 
@@ -300,6 +282,10 @@ const App: React.FC = () => {
           setIsSuperAdmin(true);
         } else {
           await syncCloudShards(storedHubId);
+          // Auto-redirect pupil on initialization if role is pupil
+          if (user.role === 'pupil') {
+            setViewMode('pupil_hub');
+          }
         }
       }
       setIsInitializing(false);
@@ -319,6 +305,12 @@ const App: React.FC = () => {
     return { stats: s, processedStudents: processed, classAvgAggregate: avgAgg };
   }, [students, facilitators, settings]);
 
+  // Identify current logged-in pupil record
+  const currentPupil = useMemo(() => {
+    if (activeRole !== 'pupil' || !loggedInUser) return null;
+    return processedStudents.find(s => s.indexNumber === loggedInUser.nodeId || s.id.toString() === loggedInUser.nodeId);
+  }, [processedStudents, loggedInUser, activeRole]);
+
   const handleLogout = () => { 
     localStorage.removeItem('uba_active_hub_id');
     localStorage.removeItem('uba_active_role');
@@ -334,6 +326,13 @@ const App: React.FC = () => {
     setCurrentHubId(hubId);
     setActiveRole(user.role);
     setLoggedInUser(user);
+    
+    // Redirect logic
+    if (user.role === 'pupil') {
+      setViewMode('pupil_hub');
+    } else {
+      setViewMode('home');
+    }
   };
 
   const handleOnboardingComplete = async (hubId: string) => {
@@ -346,6 +345,7 @@ const App: React.FC = () => {
     setLoggedInUser(user);
     setIsRegistering(false);
     await syncCloudShards(hubId);
+    setViewMode('home');
   };
 
   if (isInitializing || isSyncing) return (
@@ -367,7 +367,6 @@ const App: React.FC = () => {
         <SchoolRegistrationPortal 
           settings={settings} 
           onBulkUpdate={(u) => setSettings(prev => ({...prev, ...u}))}
-          /* Fixed: Wrapped async handleSaveAll in sync block to satisfy void return requirement */
           onSave={() => { void handleSaveAll(); }}
           onComplete={handleOnboardingComplete}
           onResetStudents={() => setStudents([])}
@@ -383,31 +382,31 @@ const App: React.FC = () => {
     </div>
   );
 
-  /* Fixed: Wrapped syncCloudShards promise in sync block to satisfy onRemoteView's expected void return type */
-  if (isSuperAdmin) return <SuperAdminPortal onExit={handleLogout} onRemoteView={(id)=>{ void syncCloudShards(id).then(() => { setCurrentHubId(id); setIsSuperAdmin(false); setActiveRole('school_admin'); }); }} />;
+  if (isSuperAdmin) return <SuperAdminPortal onExit={handleLogout} onRemoteView={(id)=>{ void syncCloudShards(id).then(() => { setCurrentHubId(id); setIsSuperAdmin(false); setActiveRole('school_admin'); setViewMode('home'); }); }} />;
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col font-sans">
-      <div className="no-print bg-blue-900 text-white p-4 sticky top-0 z-50 shadow-md flex justify-between items-center">
-        <div className="flex bg-blue-800 rounded p-1 gap-1 text-[10px] font-black uppercase overflow-x-auto no-scrollbar">
-          <button onClick={()=>setViewMode('home')} className={`px-4 py-2 rounded transition-all ${viewMode==='home' ? 'bg-white text-blue-900' : 'hover:bg-blue-700'}`}>Home</button>
-          <button onClick={()=>setViewMode('master')} className={`px-4 py-2 rounded transition-all ${viewMode==='master' ? 'bg-white text-blue-900' : 'hover:bg-blue-700'}`}>Sheets</button>
-          <button onClick={()=>setViewMode('reports')} className={`px-4 py-2 rounded transition-all ${viewMode==='reports' ? 'bg-white text-blue-900' : 'hover:bg-blue-700'}`}>Reports</button>
-          <button onClick={()=>setViewMode('series')} className={`px-4 py-2 rounded transition-all ${viewMode==='series' ? 'bg-white text-blue-900' : 'hover:bg-blue-700'}`}>Tracker</button>
-          <button onClick={()=>setViewMode('management')} className={`px-4 py-2 rounded transition-all ${viewMode==='management' ? 'bg-white text-blue-900' : 'hover:bg-blue-700'}`}>Mgmt Hub</button>
+      {/* Navigation Partition: Hidden for Pupils to ensure dashboard focus */}
+      {activeRole !== 'pupil' && (
+        <div className="no-print bg-blue-900 text-white p-4 sticky top-0 z-50 shadow-md flex justify-between items-center">
+          <div className="flex bg-blue-800 rounded p-1 gap-1 text-[10px] font-black uppercase overflow-x-auto no-scrollbar">
+            <button onClick={()=>setViewMode('home')} className={`px-4 py-2 rounded transition-all ${viewMode==='home' ? 'bg-white text-blue-900' : 'hover:bg-blue-700'}`}>Home</button>
+            <button onClick={()=>setViewMode('master')} className={`px-4 py-2 rounded transition-all ${viewMode==='master' ? 'bg-white text-blue-900' : 'hover:bg-blue-700'}`}>Sheets</button>
+            <button onClick={()=>setViewMode('reports')} className={`px-4 py-2 rounded transition-all ${viewMode==='reports' ? 'bg-white text-blue-900' : 'hover:bg-blue-700'}`}>Reports</button>
+            <button onClick={()=>setViewMode('series')} className={`px-4 py-2 rounded transition-all ${viewMode==='series' ? 'bg-white text-blue-900' : 'hover:bg-blue-700'}`}>Tracker</button>
+            <button onClick={()=>setViewMode('management')} className={`px-4 py-2 rounded transition-all ${viewMode==='management' ? 'bg-white text-blue-900' : 'hover:bg-blue-700'}`}>Mgmt Hub</button>
+          </div>
+          <button onClick={handleLogout} className="bg-red-600 text-white px-5 py-2 rounded-xl font-black text-[10px] uppercase active:scale-95 transition-all">Logout</button>
         </div>
-        <button onClick={handleLogout} className="bg-red-600 text-white px-5 py-2 rounded-xl font-black text-[10px] uppercase active:scale-95 transition-all">Logout</button>
-      </div>
+      )}
+
       <div className="flex-1 overflow-auto p-4 md:p-8">
         {viewMode==='home' && <HomeDashboard students={processedStudents} settings={settings} setViewMode={setViewMode as any} />}
-        {/* Fixed: Wrapped async handleSaveAll in sync block and used void operator to ensure void return type satisfaction */}
         {viewMode==='master' && <MasterSheet students={processedStudents} stats={stats} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); void handleSaveAll({settings:next}); }} facilitators={facilitators} isFacilitator={activeRole === 'facilitator'} />}
-        {/* Fixed: Wrapped async handleSaveAll in sync block and used void operator to ensure void return type satisfaction */}
         {viewMode==='series' && <SeriesBroadSheet students={students} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); void handleSaveAll({settings:next}); }} currentProcessed={processedStudents.map(ps=>({id:ps.id, bestSixAggregate:ps.bestSixAggregate, rank:ps.rank, totalScore:ps.totalScore, category:ps.category}))} />}
         {viewMode==='reports' && (
           <div className="space-y-8">
             <input type="text" placeholder="Search..." value={reportSearchTerm} onChange={(e)=>setReportSearchTerm(e.target.value)} className="w-full p-6 rounded-3xl border-2 border-gray-100 shadow-sm font-bold no-print outline-none" />
-            {/* Fixed: Wrapped async handleSaveAll in sync block and used void operator to ensure void return type satisfaction */}
             {processedStudents.filter(s=>(s.name||"").toLowerCase().includes(reportSearchTerm.toLowerCase())).map(s=><ReportCard key={s.id} student={s} stats={stats} settings={settings} onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); void handleSaveAll({settings:next}); }} classAverageAggregate={classAvgAggregate} totalEnrolled={processedStudents.length} isFacilitator={activeRole === 'facilitator'} loggedInUser={loggedInUser} />)}
           </div>
         )}
@@ -420,15 +419,26 @@ const App: React.FC = () => {
             subjects={SUBJECT_LIST} 
             settings={settings} 
             onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} 
-            /* Fixed: Wrapped async handleSaveAll in sync block and used void operator to ensure void return type satisfaction */
             onBulkUpdate={(u)=>{ const next={...settings,...u}; setSettings(next); void handleSaveAll({settings:next}); }} 
-            /* Fixed: Changed expression-bodied arrow function to block body and handled handleSaveAll promise to satisfy void return type */
             onSave={(ov)=>{ void handleSaveAll(ov); }} 
             processedSnapshot={processedStudents} 
             onLoadDummyData={()=>{}} 
             onClearData={()=>{}} 
             isFacilitator={activeRole === 'facilitator'} 
             loggedInUser={loggedInUser} 
+          />
+        )}
+        {viewMode==='pupil_hub' && currentPupil && (
+          <PupilDashboard 
+            student={currentPupil}
+            stats={stats}
+            settings={settings}
+            classAverageAggregate={classAvgAggregate}
+            totalEnrolled={processedStudents.length}
+            onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); void handleSaveAll({settings:next}); }}
+            globalRegistry={[]} // Registry view is typically restricted or handled via Supabase
+            onLogout={handleLogout}
+            loggedInUser={loggedInUser}
           />
         )}
       </div>

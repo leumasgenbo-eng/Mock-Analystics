@@ -31,7 +31,8 @@ const PupilNetworkRankingView: React.FC<PupilNetworkRankingViewProps> = ({ regis
     const allPupils: PupilRankingRow[] = [];
 
     registry.forEach(school => {
-      if (!school.fullData || !school.fullData.students) return;
+      // Fix: Added Array.isArray check to ensure students is a StudentData[] and not a count (number) or undefined
+      if (!school.fullData || !Array.isArray(school.fullData.students)) return;
 
       const schoolSettings = school.fullData.settings;
       const activeMock = schoolSettings.activeMock;
@@ -134,7 +135,7 @@ const PupilNetworkRankingView: React.FC<PupilNetworkRankingViewProps> = ({ regis
         </div>
         <div className="relative w-full md:w-96">
            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-600">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
            </div>
            <input 
              type="text" 
