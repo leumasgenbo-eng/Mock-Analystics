@@ -136,7 +136,8 @@ const ManagementDesk: React.FC<ManagementDeskProps> = ({
           {activeTab === 'facilitators' && <FacilitatorPortal subjects={subjects} facilitators={facilitators} setFacilitators={setFacilitators} settings={settings} onSave={onSave} />}
           {activeTab === 'grading' && <GradingConfigPortal settings={settings} onSettingChange={onSettingChange} />}
           {activeTab === 'history' && <SeriesHistoryPortal students={students} settings={settings} />}
-          {activeTab === 'resources' && <MockResourcesPortal settings={settings} onSettingChange={onSettingChange} subjects={subjects} />}
+          {/* Fix: Added missing facilitators and onSave props to MockResourcesPortal to satisfy its interface */}
+          {activeTab === 'resources' && <MockResourcesPortal settings={settings} onSettingChange={onSettingChange} subjects={subjects} facilitators={facilitators} onSave={onSave} />}
         </div>
       </div>
     </div>

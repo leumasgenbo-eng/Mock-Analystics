@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { GlobalSettings, MockResource, QuestionIndicatorMapping, SerializedExam } from '../../types';
+import { GlobalSettings, MockResource, QuestionIndicatorMapping, SerializedExam, StaffAssignment } from '../../types';
 import { supabase } from '../../supabaseClient';
 
 interface ResourceLog {
@@ -14,21 +14,27 @@ interface MockResourcesPortalProps {
   settings: GlobalSettings;
   onSettingChange: (key: keyof GlobalSettings, value: any) => void;
   subjects: string[];
+  facilitators: Record<string, StaffAssignment>;
   isFacilitator?: boolean;
   activeFacilitator?: { name: string; subject: string; email?: string } | null;
   onSave?: (overrides?: any) => void;
 }
 
 const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({ 
-  settings, onSettingChange, subjects, isFacilitator, activeFacilitator, onSave 
+  settings, onSettingChange, subjects, facilitators, isFacilitator, activeFacilitator, onSave 
 }) => {
   const filteredSubjects = isFacilitator && activeFacilitator ? [activeFacilitator.subject] : subjects;
   const [selectedSubject, setSelectedSubject] = useState(filteredSubjects[0]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [logSearch, setLogSearch] = useState('');
   
-  // Local state for logs - normally these would be in Supabase but we'll simulate for the UI
+  // Simulation of logs
   const [logs, setLogs] = useState<ResourceLog[]>([]);
+
+  // Find the facilitator assigned to the selected subject
+  const assignedSpecialist = useMemo(() => {
+    return Object.values(facilitators).find(f => f.taughtSubject === selectedSubject) || null;
+  }, [facilitators, selectedSubject]);
 
   const activeResource: MockResource = useMemo(() => {
     return settings.resourcePortal?.[settings.activeMock]?.[selectedSubject] || { indicators: [], questionUrl: '', schemeUrl: '' };
@@ -140,21 +146,46 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-24 font-sans">
       
-      {/* Branded Header */}
-      <header className="bg-slate-950 text-white p-12 rounded-[4rem] shadow-2xl relative overflow-hidden">
+      {/* Branded Header with Specialist Alignment */}
+      <header className="bg-slate-950 text-white p-10 rounded-[4rem] shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
         {isSyncing && <div className="absolute inset-0 bg-blue-600/5 backdrop-blur-[2px] flex items-center justify-center z-50"><div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div></div>}
+        
         <div className="relative flex flex-col xl:flex-row justify-between items-center gap-10">
-           <div className="space-y-2 text-center xl:text-left">
-              <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em]">Mock Resources Hub</h3>
+           <div className="space-y-3 text-center xl:text-left">
+              <div className="flex flex-col xl:flex-row xl:items-center gap-4">
+                 <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em]">Mock Resources Hub</h3>
+                 <div className="bg-white/10 px-4 py-1 rounded-full border border-white/5 inline-flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse"></div>
+                    <span className="text-[8px] font-black uppercase text-blue-300">Relational Sync Active</span>
+                 </div>
+              </div>
               <p className="text-3xl font-black uppercase tracking-tight leading-none">
                 {selectedSubject} <span className="text-blue-500 mx-2">/</span> {settings.activeMock}
               </p>
            </div>
+
+           {/* Specialist Node */}
+           <div className="bg-white/5 border border-white/10 p-5 rounded-3xl backdrop-blur-md flex items-center gap-5 min-w-[280px]">
+              <div className="w-12 h-12 bg-blue-600/20 text-blue-400 rounded-2xl flex items-center justify-center border border-blue-400/20 shadow-inner shrink-0">
+                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+              <div className="flex flex-col">
+                 <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Assigned specialist lead</span>
+                 <p className="text-sm font-black uppercase text-white truncate max-w-[200px]">{assignedSpecialist?.name || 'VACANT NODE'}</p>
+                 <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[7px] font-mono text-blue-400 font-bold">{assignedSpecialist?.enrolledId || '---'}</span>
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[6px] font-black uppercase tracking-widest">Faculty Verified</span>
+                 </div>
+              </div>
+           </div>
+        </div>
+
+        <div className="mt-8 flex justify-center xl:justify-start">
            {!isFacilitator && (
-             <div className="flex flex-wrap bg-white/5 p-2 rounded-[2.5rem] border border-white/10 backdrop-blur-md overflow-x-auto no-scrollbar max-w-full z-10">
+             <div className="flex flex-wrap bg-white/5 p-1.5 rounded-3xl border border-white/10 backdrop-blur-md overflow-x-auto no-scrollbar max-w-full z-10">
                 {subjects.map(s => (
-                  <button key={s} onClick={() => setSelectedSubject(s)} className={`px-6 py-3 rounded-2xl text-[9px] font-black uppercase transition-all whitespace-nowrap ${selectedSubject === s ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+                  <button key={s} onClick={() => setSelectedSubject(s)} className={`px-5 py-2.5 rounded-2xl text-[9px] font-black uppercase transition-all whitespace-nowrap ${selectedSubject === s ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
                     {s}
                   </button>
                 ))}
