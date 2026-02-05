@@ -31,28 +31,6 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
 
   const generateSixDigitPin = () => Math.floor(100000 + Math.random() * 900000).toString();
 
-  const syncToRelationalTables = async (student: StudentData) => {
-    const hubId = settings.schoolNumber;
-    await supabase.from('uba_identities').upsert({
-      email: student.parentEmail?.toLowerCase().trim() || `${student.indexNumber}@unitedbaylor.edu.gh`,
-      full_name: student.name.toUpperCase().trim(),
-      node_id: student.indexNumber!,
-      hub_id: hubId,
-      role: 'pupil',
-      unique_code: student.uniqueCode 
-    });
-
-    await supabase.from('uba_pupils').upsert({
-      student_id: student.indexNumber,
-      name: student.name.toUpperCase().trim(),
-      gender: student.gender === 'F' ? 'F' : 'M',
-      class_name: settings.termInfo || 'BASIC 9',
-      hub_id: hubId,
-      is_jhs_level: true,
-      enrollment_status: 'ACTIVE'
-    });
-  };
-
   const handleDeleteStudent = async (id: number, indexNumber?: string) => {
     if (!window.confirm(`CRITICAL: Purge candidate shard for ${indexNumber || 'this pupil'}? All assessments and global access will be revoked.`)) return;
 
@@ -73,19 +51,13 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     }
   };
 
+  // Centralized engine handles uba_persistence, uba_identities, and uba_pupils mirroring.
   const handleGlobalCloudSync = async () => {
     if (students.length === 0) return alert("No pupils found to sync.");
     setIsEnrolling(true);
     try {
-      // 1. Sync individual identity records
-      const syncTasks = students.map(s => syncToRelationalTables(s));
-      await Promise.all(syncTasks);
-      
-      // 2. Commit full state (Settings + Students + Facilitators) to Persistence Layer
-      // This also extracts scores/SBA into the uba_mock_scores analytical table
-      onSave({ students: students }); 
-      
-      alert(`CLOUD SYNCHRONIZATION COMPLETE: ${students.length} pupils and all SBA shards mirrored.`);
+      await onSave({ students: students }); 
+      alert(`CLOUD SYNCHRONIZATION COMPLETE: ${students.length} pupils mirrored across all relational shards.`);
     } catch (err: any) {
       alert("Sync Failure: " + err.message);
     } finally {
@@ -120,9 +92,9 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
         };
         const nextStudents = students.map(s => s.id === editingId ? updatedPupil : s);
         setStudents(nextStudents);
-        await syncToRelationalTables(updatedPupil);
-        onSave({ students: nextStudents });
-        alert("CANDIDATE IDENTITY MODULATED.");
+        // Central engine handles mirroring to identities, pupils and persistence tables.
+        await onSave({ students: nextStudents });
+        alert("CANDIDATE IDENTITY MODULATED & SYNCED.");
       } else {
         const nextSeq = students.length > 0 ? Math.max(...students.map(s => s.id)) + 1 : 101;
         const studentId = generateCompositeId(settings.schoolName, settings.academicYear, nextSeq);
@@ -135,9 +107,9 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
         };
         const nextStudents = [...students, newPupil];
         setStudents(nextStudents);
-        await syncToRelationalTables(newPupil);
-        onSave({ students: nextStudents });
-        alert(`ENROLLMENT SUCCESS: ${studentId}`);
+        // Central engine handles mirroring to identities, pupils and persistence tables.
+        await onSave({ students: nextStudents });
+        alert(`ENROLLMENT SUCCESS: ${studentId} ACTIVATED IN CLOUD.`);
       }
       setFormData({ name: '', gender: 'M', guardianName: '', parentContact: '', parentEmail: '' });
       setEditingId(null);
@@ -172,8 +144,9 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
         }
       }
       setStudents(nextStudents);
+      // Quad-mirror sync triggered by central onSave
       onSave({ students: nextStudents });
-      alert(`BULK INGESTION SUCCESS: ${dataLines.length} candidates buffered.`);
+      alert(`BULK INGESTION SUCCESS: ${dataLines.length} candidates buffered & mirrored.`);
       if (fileInputRef.current) fileInputRef.current.value = "";
     };
     reader.readAsText(file);
@@ -188,7 +161,6 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
     setStudents(prev => prev.map(s => {
       if (s.id !== studentId) return s;
       
-      // Mirror update to both top-level and series-specific mockData
       const activeMock = settings.activeMock;
       const currentMockData = s.mockData?.[activeMock] || { 
         scores: {}, sbaScores: {}, examSubScores: {}, facilitatorRemarks: {}, 
@@ -208,18 +180,6 @@ const PupilSBAPortal: React.FC<PupilSBAPortalProps> = ({ students, setStudents, 
         }
       };
     }));
-  };
-
-  const handleDownloadRegistry = () => {
-    const header = "Name,Gender,Guardian,Contact,Email,NodeID,PIN\n";
-    const rows = students.map(s => `"${s.name}","${s.gender}","${s.parentName || ''}","${s.parentContact || ''}","${s.parentEmail || ''}","${s.indexNumber || ''}","${s.uniqueCode || ''}"`).join("\n");
-    const blob = new Blob([header + rows], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `Pupil_Registry_${settings.schoolNumber}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
   };
 
   const filteredStudents = students.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));

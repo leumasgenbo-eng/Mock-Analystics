@@ -81,10 +81,11 @@ const App: React.FC = () => {
   }, [settings, students, facilitators]);
 
   /**
-   * ENHANCED TRIPLE-MIRROR SYNC ENGINE
-   * 1. Persistence Shard (uba_persistence)
-   * 2. Identity Registry (uba_identities)
-   * 3. Facilitator Records (uba_facilitators)
+   * ADVANCED QUAD-MIRROR SYNC ENGINE
+   * 1. Persistence Layer: AppState Snapshots (uba_persistence)
+   * 2. Identity Hub: Universal Security Keys (uba_identities)
+   * 3. Specialist Registry: Faculty Records (uba_facilitators)
+   * 4. Candidate Registry: Pupil Records (uba_pupils)
    */
   const handleSaveAll = async (overrides?: { settings?: GlobalSettings, students?: StudentData[], facilitators?: Record<string, StaffAssignment> }) => {
     const activeSettings = overrides?.settings || stateRef.current.settings;
@@ -94,7 +95,7 @@ const App: React.FC = () => {
     const hubId = activeSettings.schoolNumber || currentHubId;
     if (!hubId) return;
 
-    // Local Mirror
+    // Local Mirror for redundancy
     localStorage.setItem(`uba_safety_shard_${hubId}`, JSON.stringify({
       settings: activeSettings,
       students: activeStudents,
@@ -105,7 +106,7 @@ const App: React.FC = () => {
     try {
       const timestamp = new Date().toISOString();
       
-      // 1. Persistence Layer: Snapshot Blob
+      // MIRROR 1: Persistence Blob Shards
       const persistenceUpdates = [
         { id: `${hubId}_settings`, hub_id: hubId, payload: activeSettings, last_updated: timestamp },
         { id: `${hubId}_students`, hub_id: hubId, payload: activeStudents, last_updated: timestamp },
@@ -113,10 +114,10 @@ const App: React.FC = () => {
       ];
       await supabase.from('uba_persistence').upsert(persistenceUpdates);
 
-      // 2. Relational Mirror: Identifiers & Credentials
+      // MIRROR 2 & 3: Faculty Relational Registry
       const facilitatorList = Object.values(activeFacs) as StaffAssignment[];
       if (facilitatorList.length > 0) {
-        const identitiesBatch = facilitatorList.map(f => ({
+        const staffIdentities = facilitatorList.map(f => ({
           email: f.email.toLowerCase().trim(),
           full_name: f.name.toUpperCase().trim(),
           node_id: f.enrolledId,
@@ -125,7 +126,7 @@ const App: React.FC = () => {
           unique_code: f.uniqueCode
         }));
         
-        const facilitatorsBatch = facilitatorList.map(f => ({
+        const staffDetails = facilitatorList.map(f => ({
           email: f.email.toLowerCase().trim(),
           full_name: f.name.toUpperCase().trim(),
           hub_id: hubId,
@@ -138,11 +139,36 @@ const App: React.FC = () => {
           invigilation_data: f.invigilations
         }));
 
-        await supabase.from('uba_identities').upsert(identitiesBatch);
-        await supabase.from('uba_facilitators').upsert(facilitatorsBatch);
+        await supabase.from('uba_identities').upsert(staffIdentities);
+        await supabase.from('uba_facilitators').upsert(staffDetails);
       }
 
-      // 3. Analytics Mirror: Score Registry
+      // MIRROR 2 & 4: Pupil Relational Registry
+      if (activeStudents.length > 0) {
+        const pupilIdentities = activeStudents.map(s => ({
+          email: s.parentEmail?.toLowerCase().trim() || `${s.indexNumber}@unitedbaylor.edu.gh`,
+          full_name: s.name.toUpperCase().trim(),
+          node_id: s.indexNumber!,
+          hub_id: hubId,
+          role: 'pupil',
+          unique_code: s.uniqueCode
+        }));
+
+        const pupilDetails = activeStudents.map(s => ({
+          student_id: s.indexNumber,
+          name: s.name.toUpperCase().trim(),
+          gender: s.gender === 'F' ? 'F' : 'M',
+          class_name: activeSettings.termInfo || 'BASIC 9',
+          hub_id: hubId,
+          is_jhs_level: true,
+          enrollment_status: 'ACTIVE'
+        }));
+
+        await supabase.from('uba_identities').upsert(pupilIdentities);
+        await supabase.from('uba_pupils').upsert(pupilDetails);
+      }
+
+      // MIRROR 5: Analytical Score Registry
       const activeMock = activeSettings.activeMock;
       const scoresPayload = activeStudents.flatMap(s => {
          const mockSet = s.mockData?.[activeMock];
@@ -164,16 +190,16 @@ const App: React.FC = () => {
          await supabase.from('uba_mock_scores').upsert(scoresPayload);
       }
 
-      // 4. Audit Log
+      // Audit Logging
       await supabase.from('uba_activity_logs').insert({
           node_id: hubId,
           staff_id: loggedInUser?.email || 'SYSTEM_AUTO',
-          action_type: 'TRIPLE_MIRROR_SYNC',
-          context_data: { status: 'COMMITTED', staff_count: facilitatorList.length, mock: activeMock }
+          action_type: 'GLOBAL_QUAD_SYNC',
+          context_data: { status: 'COMMITTED', pupils: activeStudents.length, staff: facilitatorList.length, mock: activeMock }
       });
       
     } catch (e) {
-      console.warn("[CLOUD SYNC ERROR]", e);
+      console.warn("[QUAD SYNC HANDSHAKE ERROR]", e);
     }
   };
 
@@ -213,7 +239,7 @@ const App: React.FC = () => {
       setIsSyncing(false);
       return { settings: finalSettings, students: finalStudents, facilitators: finalFacilitators };
     } catch (e) { 
-      console.error("[SHARD SYNC ERROR]", e); 
+      console.error("[SHARD RECALL ERROR]", e); 
       setIsSyncing(false);
     }
     return null;
@@ -287,7 +313,7 @@ const App: React.FC = () => {
       </div>
       <div className="text-center space-y-2">
          <p className="text-2xl font-black text-white uppercase tracking-[0.6em] animate-pulse">Syncing Academy Node</p>
-         <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Restoring State from Cloud Hub</p>
+         <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Mirroring Shards from Global Hub</p>
       </div>
     </div>
   );
