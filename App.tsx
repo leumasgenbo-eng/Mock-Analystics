@@ -305,10 +305,14 @@ const App: React.FC = () => {
     return { stats: s, processedStudents: processed, classAvgAggregate: avgAgg };
   }, [students, facilitators, settings]);
 
-  // Identify current logged-in pupil record
+  // Robust identification of current logged-in pupil record
   const currentPupil = useMemo(() => {
     if (activeRole !== 'pupil' || !loggedInUser) return null;
-    return processedStudents.find(s => s.indexNumber === loggedInUser.nodeId || s.id.toString() === loggedInUser.nodeId);
+    const nodeId = loggedInUser.nodeId.trim().toUpperCase();
+    return processedStudents.find(s => 
+      (s.indexNumber && s.indexNumber.trim().toUpperCase() === nodeId) || 
+      (s.id.toString() === nodeId)
+    ) || null;
   }, [processedStudents, loggedInUser, activeRole]);
 
   const handleLogout = () => { 
@@ -428,15 +432,15 @@ const App: React.FC = () => {
             loggedInUser={loggedInUser} 
           />
         )}
-        {viewMode==='pupil_hub' && currentPupil && (
+        {viewMode==='pupil_hub' && (
           <PupilDashboard 
-            student={currentPupil}
+            student={currentPupil!}
             stats={stats}
             settings={settings}
             classAverageAggregate={classAvgAggregate}
             totalEnrolled={processedStudents.length}
             onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); void handleSaveAll({settings:next}); }}
-            globalRegistry={[]} // Registry view is typically restricted or handled via Supabase
+            globalRegistry={[]} 
             onLogout={handleLogout}
             loggedInUser={loggedInUser}
           />
