@@ -1,7 +1,5 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { GlobalSettings, MockResource, QuestionIndicatorMapping, StaffAssignment } from '../../types';
-import { SUBJECT_LIST } from '../../constants';
 
 interface ResourceLog {
   timestamp: string;
@@ -23,19 +21,27 @@ interface MockResourcesPortalProps {
 const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({ 
   settings, onSettingChange, subjects, facilitators, isFacilitator, activeFacilitator, onSave 
 }) => {
-  // Logic to determine which subject to show initially
-  const initialSubject = isFacilitator && activeFacilitator?.subject ? activeFacilitator.subject : subjects[0];
-  const [selectedSubject, setSelectedSubject] = useState(initialSubject);
+  // STRICT LOGIC: If user is facilitator, force their linked subject.
+  const getInitialSubject = () => {
+    if (isFacilitator && activeFacilitator?.subject) {
+      // Ensure the subject exists in the global subject list
+      const matched = subjects.find(s => s.toLowerCase() === activeFacilitator.subject.toLowerCase());
+      return matched || subjects[0];
+    }
+    return subjects[0];
+  };
+
+  const [selectedSubject, setSelectedSubject] = useState(getInitialSubject());
   const [isSyncing, setIsSyncing] = useState(false);
   const [logSearch, setLogSearch] = useState('');
   const [logs, setLogs] = useState<ResourceLog[]>([]);
 
-  // Force subject change if activeFacilitator changes
+  // Force re-lock subject if activeFacilitator context updates
   useEffect(() => {
     if (isFacilitator && activeFacilitator?.subject) {
-      setSelectedSubject(activeFacilitator.subject);
+      setSelectedSubject(getInitialSubject());
     }
-  }, [isFacilitator, activeFacilitator]);
+  }, [isFacilitator, activeFacilitator?.subject]);
 
   const assignedSpecialist = useMemo(() => {
     return Object.values(facilitators).find(f => f.taughtSubject === selectedSubject) || null;
@@ -47,12 +53,14 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
     return mockShard[selectedSubject] || { indicators: [], questionUrl: '', schemeUrl: '', status: 'DRAFT' };
   }, [settings.resourcePortal, settings.activeMock, selectedSubject]);
 
+  // Lock status: Disable inputs if verified or submitted (submitted facilitators can't edit unless admin reverts)
+  const isLocked = activeResource.status === 'VERIFIED' || (isFacilitator && activeResource.status === 'SUBMITTED');
+
   // Aggregate stats for Admin View
   const submissionStats = useMemo(() => {
     const portal = settings.resourcePortal || {};
     const mockShard = portal[settings.activeMock] || {};
     const stats = subjects.map(sub => {
-      // Fix: cast fallback object to MockResource to resolve property 'submissionDate' missing in fallback
       const res = (mockShard[sub] || { status: 'DRAFT', indicators: [] }) as MockResource;
       const facilitator = Object.values(facilitators).find(f => f.taughtSubject === sub);
       return { subject: sub, status: res.status || 'DRAFT', facilitator: facilitator?.name || 'VACANT', date: res.submissionDate };
@@ -71,6 +79,7 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
   };
 
   const updateResource = (updates: Partial<MockResource>) => {
+    if (isLocked) return;
     setIsSyncing(true);
     const currentPortal = { ...(settings.resourcePortal || {}) };
     const mockData = { ...(currentPortal[settings.activeMock] || {}) };
@@ -105,6 +114,7 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
   };
 
   const handleAddRow = (section: 'A' | 'B') => {
+    if (isLocked) return;
     const nextRef = activeResource.indicators.filter(i => i.section === section).length + 1;
     const newIndicator: QuestionIndicatorMapping = {
       id: `ind-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
@@ -121,11 +131,13 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
   };
 
   const handleDeleteRow = (id: string) => {
+    if (isLocked) return;
     updateResource({ indicators: activeResource.indicators.filter(i => i.id !== id) });
     addLog(`DELETE_ROW`, `Removed indicator shard from ledger.`);
   };
 
   const updateIndicator = (id: string, field: keyof QuestionIndicatorMapping, value: any) => {
+    if (isLocked) return;
     const nextIndicators = activeResource.indicators.map(ind => 
       ind.id === id ? { ...ind, [field]: value } : ind
     );
@@ -133,7 +145,7 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
   };
 
   const generateObjectives = () => {
-    if (!window.confirm("STRUCTURAL OVERRIDE: Generate standard 1-40 objective set?")) return;
+    if (isLocked || !window.confirm("STRUCTURAL OVERRIDE: Generate standard 1-40 objective set?")) return;
     const newObjs: QuestionIndicatorMapping[] = Array.from({ length: 40 }, (_, i) => ({
       id: `obj-${Date.now()}-${i}`,
       section: 'A',
@@ -149,7 +161,7 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
   };
 
   const generateTheory = () => {
-    if (!window.confirm("STRUCTURAL OVERRIDE: Generate Section B (Q1-Q5) parts?")) return;
+    if (isLocked || !window.confirm("STRUCTURAL OVERRIDE: Generate Section B (Q1-Q5) parts?")) return;
     const nextBase = activeResource.indicators.filter(i => i.section === 'B').length;
     const newTheory: QuestionIndicatorMapping[] = Array.from({ length: 5 }, (_, i) => ({
       id: `thy-${Date.now()}-${i}`,
@@ -166,7 +178,7 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
   };
 
   const clearIndicators = () => {
-    if (!window.confirm("CRITICAL PURGE: Clear all mapped indicators?")) return;
+    if (isLocked || !window.confirm("CRITICAL PURGE: Clear all mapped indicators?")) return;
     updateResource({ indicators: [] });
     addLog(`CLEAR_ALL`, `Purged all indicator mappings.`);
   };
@@ -264,14 +276,14 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
             <div className="space-y-4">
                <input 
                  type="text" 
-                 disabled={activeResource.status === 'VERIFIED'}
+                 disabled={isLocked}
                  placeholder="Attach Cloud Link..." 
                  value={activeResource.questionUrl || ''} 
                  onChange={(e) => updateResource({ questionUrl: e.target.value })}
                  className="w-full bg-slate-50 border border-gray-100 rounded-xl px-5 py-3 text-xs font-mono font-bold text-blue-900 outline-none focus:ring-4 focus:ring-blue-500/5 transition-all disabled:opacity-50"
                />
                <div className="grid grid-cols-2 gap-3">
-                  <button className="bg-slate-900 text-white py-3 rounded-xl font-black text-[9px] uppercase hover:bg-black transition-all disabled:opacity-50" disabled={activeResource.status === 'VERIFIED'}>Upload Paper</button>
+                  <button className="bg-slate-900 text-white py-3 rounded-xl font-black text-[9px] uppercase hover:bg-black transition-all disabled:opacity-50" disabled={isLocked}>Upload Paper</button>
                   {activeResource.questionUrl && (
                     <a href={activeResource.questionUrl} target="_blank" rel="noreferrer" className="bg-blue-50 text-blue-600 py-3 rounded-xl font-black text-[9px] uppercase border border-blue-100 hover:bg-blue-100 transition-all text-center">View Current Shard</a>
                   )}
@@ -289,14 +301,14 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
             <div className="space-y-4">
                <input 
                  type="text" 
-                 disabled={activeResource.status === 'VERIFIED'}
+                 disabled={isLocked}
                  placeholder="Attach Scheme Link..." 
                  value={activeResource.schemeUrl || ''} 
                  onChange={(e) => updateResource({ schemeUrl: e.target.value })}
                  className="w-full bg-slate-50 border border-gray-100 rounded-xl px-5 py-3 text-xs font-mono font-bold text-emerald-900 outline-none focus:ring-4 focus:ring-emerald-500/5 transition-all disabled:opacity-50"
                />
                <div className="grid grid-cols-2 gap-3">
-                  <button className="bg-slate-900 text-white py-3 rounded-xl font-black text-[9px] uppercase hover:bg-black transition-all disabled:opacity-50" disabled={activeResource.status === 'VERIFIED'}>Upload Scheme</button>
+                  <button className="bg-slate-900 text-white py-3 rounded-xl font-black text-[9px] uppercase hover:bg-black transition-all disabled:opacity-50" disabled={isLocked}>Upload Scheme</button>
                   {activeResource.schemeUrl && (
                     <a href={activeResource.schemeUrl} target="_blank" rel="noreferrer" className="bg-emerald-50 text-emerald-600 py-3 rounded-xl font-black text-[9px] uppercase border border-emerald-100 hover:bg-emerald-100 transition-all text-center">View Current Shard</a>
                   )}
@@ -314,9 +326,9 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
                <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">Auto-build assessment blueprints</p>
             </div>
             <div className="flex flex-wrap gap-3">
-               <button onClick={generateObjectives} disabled={activeResource.status === 'VERIFIED'} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg transition-all active:scale-95 disabled:opacity-50">Auto-build Objectives (1-40)</button>
-               <button onClick={generateTheory} disabled={activeResource.status === 'VERIFIED'} className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg transition-all active:scale-95 disabled:opacity-50">Add Section B Hubs (Q1-Q5)</button>
-               <button onClick={clearIndicators} disabled={activeResource.status === 'VERIFIED'} className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase border border-red-500/20 transition-all disabled:opacity-50">Purge Framework</button>
+               <button onClick={generateObjectives} disabled={isLocked} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg transition-all active:scale-95 disabled:opacity-50">Auto-build Objectives (1-40)</button>
+               <button onClick={generateTheory} disabled={isLocked} className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg transition-all active:scale-95 disabled:opacity-50">Add Section B Hubs (Q1-Q5)</button>
+               <button onClick={clearIndicators} disabled={isLocked} className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase border border-red-500/20 transition-all disabled:opacity-50">Purge Framework</button>
             </div>
          </div>
       </section>
@@ -329,8 +341,8 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Mapping curriculum nodes to examination items</p>
            </div>
            <div className="flex flex-wrap justify-center gap-3">
-              <button onClick={() => handleAddRow('A')} disabled={activeResource.status === 'VERIFIED'} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-[9px] font-black uppercase hover:bg-blue-700 transition-all shadow-lg disabled:opacity-50">+ Add Item A</button>
-              <button onClick={() => handleAddRow('B')} disabled={activeResource.status === 'VERIFIED'} className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl text-[9px] font-black uppercase hover:bg-indigo-700 transition-all shadow-lg disabled:opacity-50">+ Add Item B</button>
+              <button onClick={() => handleAddRow('A')} disabled={isLocked} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-[9px] font-black uppercase hover:bg-blue-700 transition-all shadow-lg disabled:opacity-50">+ Add Item A</button>
+              <button onClick={() => handleAddRow('B')} disabled={isLocked} className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl text-[9px] font-black uppercase hover:bg-indigo-700 transition-all shadow-lg disabled:opacity-50">+ Add Item B</button>
            </div>
         </div>
         <div className="overflow-x-auto">
@@ -351,31 +363,31 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
               {activeResource.indicators.map((ind) => (
                 <tr key={ind.id} className="hover:bg-blue-50/50 transition-colors h-16 group">
                   <td className="px-8 py-2 text-center">
-                    <select disabled={activeResource.status === 'VERIFIED'} value={ind.section} onChange={(e) => updateIndicator(ind.id, 'section', e.target.value)} className="bg-transparent font-black text-[9px] uppercase outline-none text-blue-900 disabled:opacity-50">
+                    <select disabled={isLocked} value={ind.section} onChange={(e) => updateIndicator(ind.id, 'section', e.target.value)} className="bg-transparent font-black text-[9px] uppercase outline-none text-blue-900 disabled:opacity-50">
                       <option value="A">A</option>
                       <option value="B">B</option>
                     </select>
                   </td>
                   <td className="px-4 py-2">
-                    <input disabled={activeResource.status === 'VERIFIED'} value={ind.questionRef} onChange={(e) => updateIndicator(ind.id, 'questionRef', e.target.value)} className="w-full bg-transparent font-mono font-black text-xs text-slate-600 outline-none" />
+                    <input disabled={isLocked} value={ind.questionRef} onChange={(e) => updateIndicator(ind.id, 'questionRef', e.target.value)} className="w-full bg-transparent font-mono font-black text-xs text-slate-600 outline-none disabled:opacity-50" />
                   </td>
                   <td className="px-6 py-2">
-                    <input disabled={activeResource.status === 'VERIFIED'} value={ind.strand} onChange={(e) => updateIndicator(ind.id, 'strand', e.target.value.toUpperCase())} className="w-full bg-transparent font-black text-[10px] text-slate-800 outline-none uppercase" />
+                    <input disabled={isLocked} value={ind.strand} onChange={(e) => updateIndicator(ind.id, 'strand', e.target.value.toUpperCase())} className="w-full bg-transparent font-black text-[10px] text-slate-800 outline-none uppercase disabled:opacity-50" />
                   </td>
                   <td className="px-6 py-2">
-                    <input disabled={activeResource.status === 'VERIFIED'} value={ind.subStrand} onChange={(e) => updateIndicator(ind.id, 'subStrand', e.target.value.toUpperCase())} className="w-full bg-transparent font-bold text-[10px] text-slate-400 outline-none uppercase" />
+                    <input disabled={isLocked} value={ind.subStrand} onChange={(e) => updateIndicator(ind.id, 'subStrand', e.target.value.toUpperCase())} className="w-full bg-transparent font-bold text-[10px] text-slate-400 outline-none uppercase disabled:opacity-50" />
                   </td>
                   <td className="px-6 py-2">
-                    <input disabled={activeResource.status === 'VERIFIED'} value={ind.indicatorCode} onChange={(e) => updateIndicator(ind.id, 'indicatorCode', e.target.value.toUpperCase())} className="w-full bg-transparent font-mono text-[10px] text-indigo-600 font-black outline-none uppercase" />
+                    <input disabled={isLocked} value={ind.indicatorCode} onChange={(e) => updateIndicator(ind.id, 'indicatorCode', e.target.value.toUpperCase())} className="w-full bg-transparent font-mono text-[10px] text-indigo-600 font-black outline-none uppercase disabled:opacity-50" />
                   </td>
                   <td className="px-6 py-2">
-                    <input disabled={activeResource.status === 'VERIFIED'} value={ind.indicator} onChange={(e) => updateIndicator(ind.id, 'indicator', e.target.value.toUpperCase())} className="w-full bg-transparent text-[10px] font-medium text-slate-600 outline-none uppercase" />
+                    <input disabled={isLocked} value={ind.indicator} onChange={(e) => updateIndicator(ind.id, 'indicator', e.target.value.toUpperCase())} className="w-full bg-transparent text-[10px] font-medium text-slate-600 outline-none uppercase disabled:opacity-50" />
                   </td>
                   <td className="px-4 py-2 text-center">
-                    <input disabled={activeResource.status === 'VERIFIED'} type="number" value={ind.weight} onChange={(e) => updateIndicator(ind.id, 'weight', parseInt(e.target.value) || 0)} className="w-10 bg-transparent font-mono font-black text-xs text-center outline-none" />
+                    <input disabled={isLocked} type="number" value={ind.weight} onChange={(e) => updateIndicator(ind.id, 'weight', parseInt(e.target.value) || 0)} className="w-10 bg-transparent font-mono font-black text-xs text-center outline-none disabled:opacity-50" />
                   </td>
                   <td className="px-6 py-2 text-right">
-                    <button onClick={() => handleDeleteRow(ind.id)} disabled={activeResource.status === 'VERIFIED'} className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 disabled:hidden">
+                    <button onClick={() => handleDeleteRow(ind.id)} disabled={isLocked} className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 disabled:hidden">
                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     </button>
                   </td>
@@ -460,16 +472,17 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
             {isFacilitator ? (
                activeResource.status !== 'VERIFIED' && (
                   <button 
+                    disabled={activeResource.status === 'SUBMITTED'}
                     onClick={() => handleStatusChange('SUBMITTED')} 
-                    className="bg-emerald-600 text-white px-8 py-4 rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all hover:bg-emerald-700"
+                    className={`bg-emerald-600 text-white px-8 py-4 rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all hover:bg-emerald-700 ${activeResource.status === 'SUBMITTED' ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    {activeResource.status === 'SUBMITTED' ? 'Re-Submit Updates' : 'Finalize & Submit Hub'}
+                    {activeResource.status === 'SUBMITTED' ? 'Awaiting Endorsement' : 'Finalize & Submit Hub'}
                   </button>
                )
             ) : (
                /* Admin Verification Actions */
                <div className="flex gap-3">
-                  {activeResource.status === 'SUBMITTED' && (
+                  {(activeResource.status === 'SUBMITTED' || activeResource.status === 'DRAFT') && (
                      <button 
                        onClick={() => handleStatusChange('VERIFIED')} 
                        className="bg-emerald-600 text-white px-8 py-4 rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl active:scale-95 transition-all hover:bg-emerald-700 flex items-center gap-2"
@@ -486,12 +499,20 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
                        Revoke & Unlock
                      </button>
                   )}
+                  {activeResource.status === 'SUBMITTED' && (
+                     <button 
+                       onClick={() => handleStatusChange('DRAFT')} 
+                       className="bg-amber-50 text-amber-600 border border-amber-100 px-6 py-4 rounded-[2rem] font-black text-[10px] uppercase tracking-widest active:scale-95 transition-all hover:bg-amber-100"
+                     >
+                       Return for Correction
+                     </button>
+                  )}
                </div>
             )}
             
             <button 
               onClick={() => onSave?.()} 
-              disabled={activeResource.status === 'VERIFIED'}
+              disabled={isLocked}
               className="bg-blue-950 text-white px-10 py-4 rounded-[2rem] font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl active:scale-95 transition-all hover:bg-black disabled:opacity-30"
             >
               Commit Shard
