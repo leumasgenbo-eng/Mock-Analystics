@@ -211,7 +211,8 @@ const App: React.FC = () => {
             fullData: { 
               settings: activeSettings,
               students: activeStudents.length, 
-              staff: facilitatorList.length
+              staff: facilitatorList.length,
+              facilitators: activeFacs
             }
          },
          last_updated: timestamp
@@ -426,7 +427,7 @@ const App: React.FC = () => {
             setFacilitators={setFacilitators} 
             subjects={SUBJECT_LIST} 
             settings={settings} 
-            onSettingChange={(k,v)=>setSettings(p=>({...p,[k]:v}))} 
+            onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); void handleSaveAll({settings:next}); }} 
             onBulkUpdate={(u)=>{ const next={...settings,...u}; setSettings(next); void handleSaveAll({settings:next}); }} 
             onSave={(ov)=>{ void handleSaveAll(ov); }} 
             processedSnapshot={processedStudents} 

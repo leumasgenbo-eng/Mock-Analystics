@@ -9,10 +9,11 @@ interface MockResourcesPortalProps {
   subjects: string[];
   isFacilitator?: boolean;
   activeFacilitator?: { name: string; subject: string; email?: string } | null;
+  onSave?: (overrides?: any) => void;
 }
 
 const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({ 
-  settings, onSettingChange, subjects, isFacilitator, activeFacilitator 
+  settings, onSettingChange, subjects, isFacilitator, activeFacilitator, onSave 
 }) => {
   const filteredSubjects = isFacilitator && activeFacilitator ? [activeFacilitator.subject] : subjects;
   const [selectedSubject, setSelectedSubject] = useState(filteredSubjects[0]);
@@ -21,9 +22,9 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
   const [pasteBuffer, setPasteBuffer] = useState<Partial<QuestionIndicatorMapping>[]>([]);
   const [rawInput, setRawInput] = useState('');
   const [serializedExam, setSerializedExam] = useState<SerializedExam | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadType, setUploadType] = useState<'scheme' | 'question' | null>(null);
 
   useEffect(() => {
     const fetchSerialized = async () => {
@@ -41,17 +42,27 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
   }, [settings.resourcePortal, settings.activeMock, selectedSubject]);
 
   const updateResource = (updates: Partial<MockResource>) => {
+    setIsSyncing(true);
     const currentPortal = settings.resourcePortal || {};
     const mockData = currentPortal[settings.activeMock] || {};
     const subjectData = mockData[selectedSubject] || { indicators: [], questionUrl: '', schemeUrl: '' };
-    onSettingChange('resourcePortal', {
-      ...currentPortal, [settings.activeMock]: { ...mockData, [selectedSubject]: { ...subjectData, ...updates } }
-    });
-  };
+    
+    const nextResourcePortal = {
+      ...currentPortal, 
+      [settings.activeMock]: { 
+        ...mockData, 
+        [selectedSubject]: { ...subjectData, ...updates } 
+      }
+    };
 
-  const getNextQRef = (section: 'A' | 'B') => {
-    const existing = activeResource.indicators.filter(i => i.section === section).map(i => parseInt(i.questionRef)).filter(n => !isNaN(n));
-    return existing.length > 0 ? (Math.max(...existing) + 1).toString() : "1";
+    onSettingChange('resourcePortal', nextResourcePortal);
+    
+    // Proactively call onSave to ensure the Cloud Shard is updated
+    if (onSave) {
+      onSave({ settings: { ...settings, resourcePortal: nextResourcePortal } });
+    }
+
+    setTimeout(() => setIsSyncing(false), 800);
   };
 
   const handleDownloadPack = (variant: 'A' | 'B' | 'C' | 'D') => {
@@ -80,6 +91,7 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
       
       <header className="bg-slate-950 text-white p-12 rounded-[4rem] shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full -mr-40 -mt-40 blur-[120px]"></div>
+        {isSyncing && <div className="absolute inset-0 bg-blue-600/10 backdrop-blur-sm flex items-center justify-center z-20"><div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div></div>}
         <div className="relative flex flex-col xl:flex-row justify-between items-center gap-10">
            <div className="space-y-2 text-center xl:text-left">
               <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.5em]">Institutional Resource Hub</h3>
@@ -99,7 +111,6 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
         </div>
       </header>
 
-      {/* NEW SECTION: Serialized Exam Pack (Admin Only) */}
       {!isFacilitator && serializedExam && (
         <section className="bg-indigo-900 text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden animate-in zoom-in-95">
            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
@@ -125,7 +136,6 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
         </section>
       )}
 
-      {/* Rest of UI - Indicators Table, etc. */}
       <div className="bg-white rounded-[3.5rem] border border-gray-100 shadow-2xl overflow-hidden">
         <div className="bg-gray-50 px-10 py-8 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-8">
            <div className="space-y-1 text-center sm:text-left">
@@ -165,6 +175,11 @@ const MockResourcesPortal: React.FC<MockResourcesPortalProps> = ({
                   <td className="px-6 py-4 text-center"><span className="bg-slate-100 px-3 py-1 rounded-lg font-mono font-black text-xs text-slate-900">{ind.weight}</span></td>
                 </tr>
               ))}
+              {activeResource.indicators.length === 0 && (
+                <tr>
+                   <td colSpan={8} className="py-20 text-center opacity-30 italic text-[10px] font-black uppercase tracking-widest">No indicators mapped for this series shard</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
