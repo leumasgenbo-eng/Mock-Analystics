@@ -308,10 +308,14 @@ const App: React.FC = () => {
   // Robust identification of current logged-in pupil record
   const currentPupil = useMemo(() => {
     if (activeRole !== 'pupil' || !loggedInUser) return null;
-    const nodeId = loggedInUser.nodeId.trim().toUpperCase();
+    const loginNodeId = loggedInUser.nodeId.trim().toUpperCase();
+    const loginEmail = (loggedInUser.email || '').trim().toLowerCase();
+    
     return processedStudents.find(s => 
-      (s.indexNumber && s.indexNumber.trim().toUpperCase() === nodeId) || 
-      (s.id.toString() === nodeId)
+      (s.indexNumber && s.indexNumber.trim().toUpperCase() === loginNodeId) || 
+      (s.id.toString() === loginNodeId) ||
+      (s.email && s.email.trim().toLowerCase() === loginEmail) ||
+      (s.parentEmail && s.parentEmail.trim().toLowerCase() === loginEmail)
     ) || null;
   }, [processedStudents, loggedInUser, activeRole]);
 
@@ -440,6 +444,7 @@ const App: React.FC = () => {
             classAverageAggregate={classAvgAggregate}
             totalEnrolled={processedStudents.length}
             onSettingChange={(k,v)=>{ const next={...settings,[k]:v}; setSettings(next); void handleSaveAll({settings:next}); }}
+            onRefresh={() => syncCloudShards(currentHubId!)}
             globalRegistry={[]} 
             onLogout={handleLogout}
             loggedInUser={loggedInUser}

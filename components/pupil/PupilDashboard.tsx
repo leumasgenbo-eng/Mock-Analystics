@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { ProcessedStudent, ClassStatistics, GlobalSettings, SchoolRegistryEntry } from '../../types';
 import ReportCard from '../reports/ReportCard';
@@ -17,23 +18,49 @@ interface PupilDashboardProps {
   classAverageAggregate: number;
   totalEnrolled: number;
   onSettingChange: (key: keyof GlobalSettings, value: any) => void;
+  onRefresh: () => void;
   globalRegistry: SchoolRegistryEntry[];
   onLogout: () => void;
   loggedInUser?: { name: string; nodeId: string } | null;
 }
 
 const PupilDashboard: React.FC<PupilDashboardProps> = ({ 
-  student, stats, settings, classAverageAggregate, totalEnrolled, onSettingChange, globalRegistry, onLogout 
+  student, stats, settings, classAverageAggregate, totalEnrolled, onSettingChange, onRefresh, globalRegistry, onLogout 
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'report' | 'merit' | 'bece' | 'journey' | 'detailed' | 'global' | 'practice' | 'curriculum'>('report');
 
   if (!student) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-10 text-center">
-        <div className="bg-white p-12 rounded-[3rem] shadow-2xl space-y-6">
-           <p className="text-lg font-black text-slate-900 uppercase">Awaiting Shard Sync</p>
-           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Candidate particulars not yet fully propagated.</p>
-           <button onClick={onLogout} className="bg-blue-900 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase">Logout and Retry</button>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-10 text-center font-sans">
+        <div className="bg-white p-12 md:p-20 rounded-[4rem] shadow-2xl space-y-10 border border-gray-100 max-w-2xl animate-in zoom-in-95 duration-500">
+           <div className="relative mx-auto w-24 h-24">
+              <div className="absolute inset-0 bg-blue-100 rounded-full animate-ping opacity-20"></div>
+              <div className="relative w-24 h-24 bg-blue-900 text-white rounded-full flex items-center justify-center shadow-2xl border-8 border-slate-50">
+                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07l14.14-14.14"/></svg>
+              </div>
+           </div>
+           <div className="space-y-4">
+              <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Awaiting Shard Sync</h2>
+              <p className="text-sm font-bold text-slate-400 uppercase tracking-widest leading-relaxed">
+                 Identity Node <span className="text-blue-600">Verified</span>. However, your detailed academic particulars are still propagating from the Institutional Hub.
+              </p>
+           </div>
+           <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
+              <button 
+                onClick={onRefresh} 
+                className="bg-emerald-600 hover:bg-emerald-500 text-white px-10 py-5 rounded-[2rem] font-black text-xs uppercase tracking-widest shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3"
+              >
+                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 2v6h-6"/><path d="M21 13a9 9 0 1 1-3-7.7L21 8"/></svg>
+                 Synchronize Identity Matrix
+              </button>
+              <button 
+                onClick={onLogout} 
+                className="bg-slate-100 hover:bg-slate-200 text-slate-400 px-10 py-5 rounded-[2rem] font-black text-xs uppercase tracking-widest transition-all"
+              >
+                 Revoke Session
+              </button>
+           </div>
+           <p className="text-[10px] text-gray-300 italic uppercase font-black">SS-MAP Network Integrity Protocol v4.6</p>
         </div>
       </div>
     );
@@ -114,7 +141,7 @@ const PupilDashboard: React.FC<PupilDashboardProps> = ({
                 </div>
               )}
               {activeSubTab === 'curriculum' && <PupilCurriculumInsight student={student} schoolId={settings.schoolNumber} />}
-              {activeSubTab === 'practice' && <PupilPracticeHub schoolId={settings.schoolNumber} studentId={student.id} />}
+              {activeSubTab === 'practice' && <PupilPracticeHub schoolId={settings.schoolNumber} studentId={student.id} studentName={student.name} />}
               {activeSubTab === 'merit' && <PupilMeritView student={student} settings={settings} />}
               {activeSubTab === 'bece' && <PupilBeceLedger student={student} />}
               {activeSubTab === 'journey' && <PupilAcademicJourney student={student} mockSeriesNames={settings.committedMocks || []} />}
