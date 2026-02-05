@@ -18,24 +18,59 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
   
   const fetchBank = useCallback(async () => {
     setIsLoading(true);
-    const { data } = await supabase.from('uba_persistence').select('payload').like('id', 'likely_%');
-    if (data) {
-      const flat: MasterQuestion[] = [];
-      data.forEach(row => {
-        if (Array.isArray(row.payload)) {
-          row.payload.forEach(q => {
-            if (q.subject === selectedSubject) flat.push(q);
-          });
-        }
-      });
-      setMasterBank(flat);
+    try {
+      // MASTER RELATIONAL QUERY: Fetching directly from the uba_questions table
+      const { data, error } = await supabase
+        .from('uba_questions')
+        .select('*')
+        .eq('subject', selectedSubject);
+
+      if (error) throw error;
+
+      if (data) {
+        const mappedQs: MasterQuestion[] = data.map(q => ({
+          id: q.external_id || q.id,
+          originalIndex: 0, 
+          type: q.type as 'OBJECTIVE' | 'THEORY',
+          subject: q.subject,
+          strand: q.strand || '',
+          strandCode: q.strand_code || '',
+          subStrand: q.sub_strand || '',
+          subStrandCode: q.sub_strand_code || '',
+          indicator: q.indicator_text || '',
+          indicatorCode: q.indicator_code || '',
+          questionText: q.question_text,
+          instruction: q.instruction || '',
+          correctKey: q.correct_key || '',
+          answerScheme: q.answer_scheme || '',
+          weight: q.weight || 1,
+          blooms: q.blooms_level as any,
+          parts: [],
+          diagramUrl: q.diagram_url || '',
+          facilitatorName: q.facilitator_email || 'HUB'
+        }));
+        setMasterBank(mappedQs);
+      }
+    } catch (e: any) {
+      console.warn("[BANK RETRIEVAL ERROR]", e.message);
+      // Fallback: Attempt to parse persistence shards if relational query fails
+      const { data: persistenceData } = await supabase.from('uba_persistence').select('payload').like('id', 'likely_%');
+      if (persistenceData) {
+        const flat: MasterQuestion[] = [];
+        persistenceData.forEach(row => {
+          if (Array.isArray(row.payload)) {
+            row.payload.forEach(q => { if (q.subject === selectedSubject) flat.push(q); });
+          }
+        });
+        setMasterBank(flat);
+      }
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, [selectedSubject]);
 
   useEffect(() => { fetchBank(); }, [fetchBank]);
 
-  // Group by Indicator
   const groupedQuestions = useMemo(() => {
     const groups: Record<string, MasterQuestion[]> = {};
     masterBank.forEach(q => {
@@ -71,9 +106,9 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
           timestamp: new Date().toISOString()
         }
       });
-      alert("MATRIX HANDSHAKE SUCCESSFUL: Selected shards mirrored to Pupil Practice Hub.");
+      alert("MATRIX HANDSHAKE SUCCESSFUL: Selected relational shards mirrored to Pupil Practice Hub.");
     } catch (e) {
-      alert("Sync Interrupted.");
+      alert("Forwarding Interrupted.");
     } finally {
       setIsSyncing(false);
     }
@@ -130,7 +165,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
         <div className="relative flex flex-col xl:flex-row justify-between items-center gap-10">
            <div className="space-y-3 text-center xl:text-left">
               <h2 className="text-3xl font-black uppercase tracking-tight">Instructional Shard Bank</h2>
-              <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.5em]">United Baylor Network-Wide Mastery Ledger</p>
+              <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.5em]">United Baylor Network-Wide Relational Registry</p>
            </div>
            <div className="flex bg-white/5 p-1.5 rounded-3xl border border-white/10 backdrop-blur-md overflow-x-auto no-scrollbar max-w-full">
               {subjects.map(s => (
@@ -143,12 +178,11 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-        {/* Shard Basket */}
         <div className="lg:col-span-4 space-y-6">
            <div className="bg-white border border-gray-100 rounded-[3rem] p-10 shadow-xl space-y-8 h-fit sticky top-24">
               <div className="space-y-1">
-                 <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Active Extraction Basket</h4>
-                 <p className="text-[9px] font-bold text-slate-400 uppercase">{basket.length} Selected Shards</p>
+                 <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Extraction Basket</h4>
+                 <p className="text-[9px] font-bold text-slate-400 uppercase">{basket.length} Selected Items</p>
               </div>
               
               <div className="space-y-3 max-h-[300px] overflow-y-auto no-scrollbar">
@@ -182,15 +216,13 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
            </div>
         </div>
 
-        {/* Shard Explorer */}
         <div className="lg:col-span-8 space-y-12">
            {isLoading ? (
               <div className="py-40 flex flex-col items-center justify-center gap-6 opacity-30">
                  <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                 <p className="text-[10px] font-black uppercase tracking-0.4em">Querying Global Register...</p>
+                 <p className="text-[10px] font-black uppercase tracking-0.4em">Querying Master Relational Registry...</p>
               </div>
            ) : (
-             // Fix: Cast Object.entries to [string, MasterQuestion[]][] to resolve unknown type errors for qList access
              (Object.entries(groupedQuestions) as [string, MasterQuestion[]][]).map(([indicatorKey, qList]) => (
                 <div key={indicatorKey} className="bg-white border border-gray-100 rounded-[3rem] shadow-xl overflow-hidden animate-in fade-in duration-700">
                    <div className="bg-slate-900 px-10 py-6 border-b border-white/5 flex justify-between items-center">
@@ -231,8 +263,8 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
                                   </div>
                                 )}
                                 <div className="pt-2 border-t border-gray-50 flex justify-between items-center text-[9px] font-black uppercase text-slate-300">
-                                   <span>Submitter: {q.facilitatorName} ({q.facilitatorCode})</span>
-                                   <span className="text-emerald-500">{isSelected ? 'Added to Extraction' : 'In Cloud Storage'}</span>
+                                   <span>Submitter: {q.facilitatorName}</span>
+                                   <span className="text-emerald-500">{isSelected ? 'Added to Extraction' : 'Verified Relational Shard'}</span>
                                 </div>
                              </div>
                           </div>
@@ -245,7 +277,7 @@ const SubjectQuestionsBank: React.FC<SubjectQuestionsBankProps> = ({ activeFacil
            {masterBank.length === 0 && !isLoading && (
               <div className="py-60 text-center opacity-20 flex flex-col items-center gap-6 border-4 border-dashed border-gray-100 rounded-[4rem]">
                  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 2v20m10-10H2"/></svg>
-                 <p className="font-black uppercase text-sm tracking-[0.5em]">No instructional shards found for this subject</p>
+                 <p className="font-black uppercase text-sm tracking-[0.5em]">No items found in master relational registry</p>
               </div>
            )}
         </div>

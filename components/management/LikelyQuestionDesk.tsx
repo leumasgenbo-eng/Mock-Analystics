@@ -71,8 +71,8 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
     };
 
     try {
-      // 1. HQ MASTER REGISTRY INSERT (FORMAL RECORD)
-      const { error: bankError } = await supabase.from('uba_question_bank').insert({
+      // 1. Relational Registry Update (uba_questions)
+      const { error: relError } = await supabase.from('uba_questions').insert({
         external_id: questionId,
         hub_id: settings.schoolNumber,
         facilitator_email: facilitatorEmail,
@@ -80,17 +80,23 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
         type: formData.type,
         blooms_level: formData.blooms,
         strand: formData.strand,
+        strand_code: formData.strandCode,
         sub_strand: formData.subStrand,
+        sub_strand_code: formData.subStrandCode,
         indicator_code: formData.indicatorCode,
+        indicator_text: formData.indicator,
         question_text: formData.questionText,
+        instruction: formData.instruction,
         correct_key: formData.correctKey,
+        answer_scheme: formData.answerScheme,
         weight: formData.weight,
+        diagram_url: formData.diagramUrl,
         status: 'PENDING'
       });
 
-      if (bankError) throw bankError;
+      if (relError) throw relError;
 
-      // 2. MERIT REWARD LOGIC
+      // 2. Merit Reward Handshake
       if (facilitatorEmail) {
           const { data: currentIdent } = await supabase.from('uba_identities').select('merit_balance').eq('email', facilitatorEmail).single();
           const nextBalance = (currentIdent?.merit_balance || 0) + 5;
@@ -103,15 +109,17 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
               type: 'CREDIT',
               asset_type: 'MERIT_TOKEN',
               amount: 5,
-              description: `Submission Credit: ${targetSubject} shard.`,
+              description: `Submission Credit: ${targetSubject} Relational Shard.`,
           });
       }
 
-      // 3. PERSISTENCE SHARD UPDATE
+      // 3. Persistence Hub Shard Sync
       const nextPersonalQs = [...questions, newQ];
       await supabase.from('uba_persistence').upsert({
          id: `likely_${targetSubject.replace(/\s+/g, '')}_${targetFacilitatorName.replace(/\s+/g, '')}`,
-         payload: nextPersonalQs, last_updated: new Date().toISOString()
+         hub_id: settings.schoolNumber,
+         payload: nextPersonalQs, 
+         last_updated: new Date().toISOString()
       });
 
       setQuestions(nextPersonalQs);
@@ -128,9 +136,9 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
         correctKey: '',
         answerScheme: ''
       });
-      alert(`SHARD CAPTURED: Identity synced with Global HQ Bank.`);
+      alert(`RELATIONAL SHARD CAPTURED: Item mirrored to Global HQ Matrix.`);
     } catch (error: any) {
-      alert("Sync Interrupted: " + error.message);
+      alert("Relational Sync Interrupted: " + error.message);
     } finally {
       setIsSyncing(false);
     }
@@ -201,13 +209,13 @@ const LikelyQuestionDesk: React.FC<LikelyQuestionDeskProps> = ({
             </div>
 
             <button type="submit" disabled={isSyncing} className="w-full bg-blue-950 text-white py-6 rounded-3xl font-black text-[11px] uppercase tracking-[0.3em] shadow-2xl transition-all active:scale-95 disabled:opacity-50">
-               {isSyncing ? 'Linking HQ Shard Bank...' : 'Submit to HQ Master Registry'}
+               {isSyncing ? 'Mirroring Relational Matrix...' : 'Submit to HQ Master Registry'}
             </button>
          </form>
 
          <div className="lg:col-span-5 bg-slate-900 rounded-[3.5rem] border border-white/5 shadow-inner flex flex-col overflow-hidden">
             <div className="p-8 border-b border-white/5 flex justify-between items-center">
-               <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Shard Sync Stream</h4>
+               <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Relational Shard Stream</h4>
                <span className="text-[9px] font-black text-slate-500 bg-white/5 px-3 py-1 rounded-full">{questions.length} Captured</span>
             </div>
             <div className="flex-1 overflow-y-auto p-8 space-y-6 max-h-[700px] no-scrollbar">

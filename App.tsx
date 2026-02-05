@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { calculateClassStatistics, processStudentData } from './utils';
-import { GlobalSettings, StudentData, StaffAssignment, SchoolRegistryEntry, ProcessedStudent } from './types';
+import { GlobalSettings, StudentData, StaffAssignment, SchoolRegistryEntry, ProcessedStudent, MasterQuestion } from './types';
 import { supabase } from './supabaseClient';
 
 // Auth Gates
@@ -81,11 +81,12 @@ const App: React.FC = () => {
   }, [settings, students, facilitators]);
 
   /**
-   * ADVANCED QUAD-MIRROR SYNC ENGINE
+   * ADVANCED MIRROR SYNC ENGINE
    * 1. Persistence Layer: AppState Snapshots (uba_persistence)
    * 2. Identity Hub: Universal Security Keys (uba_identities)
    * 3. Specialist Registry: Faculty Records (uba_facilitators)
    * 4. Candidate Registry: Pupil Records (uba_pupils)
+   * 5. Question Registry: Mirroring from Persistence blobs to uba_questions
    */
   const handleSaveAll = async (overrides?: { settings?: GlobalSettings, students?: StudentData[], facilitators?: Record<string, StaffAssignment> }) => {
     const activeSettings = overrides?.settings || stateRef.current.settings;
@@ -95,7 +96,6 @@ const App: React.FC = () => {
     const hubId = activeSettings.schoolNumber || currentHubId;
     if (!hubId) return;
 
-    // Local Mirror for redundancy
     localStorage.setItem(`uba_safety_shard_${hubId}`, JSON.stringify({
       settings: activeSettings,
       students: activeStudents,
@@ -168,7 +168,45 @@ const App: React.FC = () => {
         await supabase.from('uba_pupils').upsert(pupilDetails);
       }
 
-      // MIRROR 5: Analytical Score Registry
+      // MIRROR 5: Question Extraction & Relational Sync
+      // We scan persistence for question shards and push them to uba_questions
+      const { data: persistenceQuestions } = await supabase
+        .from('uba_persistence')
+        .select('payload')
+        .like('id', 'likely_%');
+
+      if (persistenceQuestions && persistenceQuestions.length > 0) {
+        const questionsToMirror = persistenceQuestions.flatMap(row => {
+          const qs = row.payload as MasterQuestion[];
+          return Array.isArray(qs) ? qs.map(q => ({
+            external_id: q.id,
+            hub_id: hubId,
+            facilitator_email: (Object.values(activeFacs) as StaffAssignment[]).find(f => f.name === q.facilitatorName)?.email,
+            subject: q.subject,
+            type: q.type,
+            blooms_level: q.blooms,
+            strand: q.strand,
+            strand_code: q.strandCode,
+            sub_strand: q.subStrand,
+            sub_strand_code: q.subStrandCode,
+            indicator_code: q.indicatorCode,
+            indicator_text: q.indicator,
+            question_text: q.questionText,
+            instruction: q.instruction,
+            correct_key: q.correctKey,
+            answer_scheme: q.answerScheme,
+            weight: q.weight,
+            diagram_url: q.diagramUrl,
+            status: 'PENDING'
+          })) : [];
+        });
+
+        if (questionsToMirror.length > 0) {
+          await supabase.from('uba_questions').upsert(questionsToMirror, { onConflict: 'external_id' });
+        }
+      }
+
+      // MIRROR 6: Analytical Score Registry
       const activeMock = activeSettings.activeMock;
       const scoresPayload = activeStudents.flatMap(s => {
          const mockSet = s.mockData?.[activeMock];
@@ -190,16 +228,15 @@ const App: React.FC = () => {
          await supabase.from('uba_mock_scores').upsert(scoresPayload);
       }
 
-      // Audit Logging
       await supabase.from('uba_activity_logs').insert({
           node_id: hubId,
           staff_id: loggedInUser?.email || 'SYSTEM_AUTO',
-          action_type: 'GLOBAL_QUAD_SYNC',
+          action_type: 'GLOBAL_MIRROR_SYNC',
           context_data: { status: 'COMMITTED', pupils: activeStudents.length, staff: facilitatorList.length, mock: activeMock }
       });
       
     } catch (e) {
-      console.warn("[QUAD SYNC HANDSHAKE ERROR]", e);
+      console.warn("[MIRROR SYNC FAULT]", e);
     }
   };
 
